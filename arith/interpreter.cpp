@@ -1,0 +1,458 @@
+#include <iostream>
+#include <sstream>
+#include <vector>
+
+namespace lexer {
+struct Token {
+    enum class Category {
+        CONSTANT_TRUE,
+        CONSTANT_FALSE,
+        CONSTANT_ZERO,
+
+        KEYWORD_IF,
+        KEYWORD_THEN,
+        KEYWORD_ELSE,
+        KEYWORD_SUCC,
+        KEYWORD_PRED,
+        KEYWORD_ISZERO,
+
+        MARKER_ERROR,
+        MARKER_END
+    };
+
+    Category category;
+    std::string text;
+};
+
+class Lexer {
+   public:
+    Lexer(std::istringstream&& in) : in_(std::move(in)) {}
+
+    Token NextToken() {
+        Token token;
+
+        if (in_ >> token.text) {
+            if (token.text == "true") {
+                token.category = Token::Category::CONSTANT_TRUE;
+            } else if (token.text == "false") {
+                token.category = Token::Category::CONSTANT_FALSE;
+            } else if (token.text == "0") {
+                token.category = Token::Category::CONSTANT_ZERO;
+            } else if (token.text == "if") {
+                token.category = Token::Category::KEYWORD_IF;
+            } else if (token.text == "then") {
+                token.category = Token::Category::KEYWORD_THEN;
+            } else if (token.text == "else") {
+                token.category = Token::Category::KEYWORD_ELSE;
+            } else if (token.text == "succ") {
+                token.category = Token::Category::KEYWORD_SUCC;
+            } else if (token.text == "pred") {
+                token.category = Token::Category::KEYWORD_PRED;
+            } else if (token.text == "iszero") {
+                token.category = Token::Category::KEYWORD_ISZERO;
+            } else {
+                token.category = Token::Category::MARKER_ERROR;
+            }
+        } else {
+            token.category = Token::Category::MARKER_END;
+        }
+
+        return token;
+    }
+
+   private:
+    std::istringstream in_;
+};
+
+std::ostream& operator<<(std::ostream& out, Token::Category token_category) {
+    switch (token_category) {
+        case Token::Category::CONSTANT_TRUE:
+            out << "true";
+            break;
+        case Token::Category::CONSTANT_FALSE:
+            out << "false";
+            break;
+        case Token::Category::CONSTANT_ZERO:
+            out << "0";
+            break;
+
+        case Token::Category::KEYWORD_IF:
+            out << "if";
+            break;
+        case Token::Category::KEYWORD_THEN:
+            out << "then";
+            break;
+        case Token::Category::KEYWORD_ELSE:
+            out << "else";
+            break;
+        case Token::Category::KEYWORD_SUCC:
+            out << "succ";
+            break;
+        case Token::Category::KEYWORD_PRED:
+            out << "pred";
+            break;
+        case Token::Category::KEYWORD_ISZERO:
+            out << "iszero";
+            break;
+
+        case Token::Category::MARKER_ERROR:
+            out << "<ERROR>";
+            break;
+        case Token::Category::MARKER_END:
+            out << "<END>";
+            break;
+
+        default:
+            out << "<ILLEGAL_TOKEN>";
+    }
+
+    return out;
+}
+}  // namespace lexer
+
+namespace parser {
+
+class Term {
+    using Cat = lexer::Token::Category;
+    friend std::ostream& operator<<(std::ostream& out,
+                                    const Term& token_category);
+
+   public:
+    enum class Flag {
+        INVALID = 1,
+        VALUE = 2,
+        NUMERIC_VALUE = 6, /* A NUMERIC_VALUE is also a VALUE. */
+        OTHER = 8
+    };
+
+    Term(Cat first_token_category, unsigned int flags,
+         std::vector<Term> sub_terms)
+        : first_token_category_(first_token_category),
+          flags_(flags),
+          sub_terms_(sub_terms) {}
+
+    Term() = default;
+    Term(const Term&) = default;
+    Term(Term&&) = default;
+    Term& operator=(const Term&) = default;
+    Term& operator=(Term&&) = default;
+
+    unsigned int Flags() const { return flags_; }
+    Cat Category() { return first_token_category_; }
+    Term& SubTerm(int i) { return sub_terms_[i]; }
+
+   private:
+    unsigned int flags_ = static_cast<unsigned int>(Flag::INVALID);
+    // Category of the first token in a term speicifies the type of the term.
+    Cat first_token_category_;
+    std::vector<Term> sub_terms_;
+};
+
+std::ostream& operator<<(std::ostream& out, const Term::Flag& flag) {
+    using Flag = Term::Flag;
+    switch (flag) {
+        case Flag::INVALID:
+            out << "INAVLID";
+            break;
+
+        case Flag::VALUE:
+            out << "VALUE";
+            break;
+
+        case Flag::NUMERIC_VALUE:
+            out << "NUMERIC_VALUE";
+            break;
+
+        case Flag::OTHER:
+            out << "OTHER";
+            break;
+
+        default:
+            out << "<UNKNOWN_TERM_FLAG>";
+    }
+
+    return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Term& term) {
+    using Category = lexer::Token::Category;
+    out << term.first_token_category_;
+
+    if (term.first_token_category_ == Category::KEYWORD_IF) {
+        out << " (" << term.sub_terms_[0] << ") " << Category::KEYWORD_THEN
+            << " (" << term.sub_terms_[1] << ") " << Category::KEYWORD_ELSE
+            << " (" << term.sub_terms_[2] << ")";
+    } else if (term.first_token_category_ == Category::KEYWORD_SUCC ||
+               term.first_token_category_ == Category::KEYWORD_PRED ||
+               term.first_token_category_ == Category::KEYWORD_ISZERO) {
+        out << " (" << term.sub_terms_[0] << ")";
+    }
+
+    return out;
+}
+
+class Parser {
+   public:
+    Parser(std::istringstream&& in) : lexer_(std::move(in)) {}
+
+    Term ParseProgram() {
+        auto program = NextTerm();
+
+        if (lexer_.NextToken().category != lexer::Token::Category::MARKER_END) {
+            throw std::invalid_argument(
+                "Error: extra input after program end.");
+        }
+
+        return program;
+    }
+
+    Term NextTerm() {
+        using Category = lexer::Token::Category;
+        auto token = lexer_.NextToken();
+
+        unsigned int flags = 0;
+        std::vector<Term> sub_terms;
+
+        switch (token.category) {
+                // Possible terms:
+            case Category::CONSTANT_TRUE:
+            case Category::CONSTANT_FALSE:
+                flags = static_cast<unsigned int>(Term::Flag::VALUE);
+                break;
+
+            case Category::CONSTANT_ZERO:
+                flags = static_cast<unsigned int>(Term::Flag::NUMERIC_VALUE);
+                break;
+
+            case Category::KEYWORD_IF: {
+                flags = static_cast<unsigned int>(Term::Flag::OTHER);
+
+                // Add condition sub-term.
+                sub_terms.emplace_back(NextTerm());
+
+                if (lexer_.NextToken().category != Category::KEYWORD_THEN) {
+                    // Parsing error:
+                    throw std::invalid_argument(
+                        "Error: invalid if-then-else term.");
+                }
+
+                // Add then branch sub-term.
+                sub_terms.emplace_back(NextTerm());
+
+                if (lexer_.NextToken().category != Category::KEYWORD_ELSE) {
+                    // Parsing error:
+                    throw std::invalid_argument(
+                        "Error: invalid if-then-else term.");
+                }
+
+                // Add then else sub-term.
+                sub_terms.emplace_back(NextTerm());
+            } break;
+
+            case Category::KEYWORD_SUCC: {
+                auto sub_term = NextTerm();
+
+                if (sub_term.Flags() &
+                    static_cast<unsigned int>(Term::Flag::INVALID)) {
+                    throw std::invalid_argument(
+                        "Error: invalid sub-term start.");
+                }
+
+                sub_terms.emplace_back(sub_term);
+                // Propagate the sub-term's flags (e.g. if the sub-term is a
+                // numeric value then this term is a numeric value as well).
+                flags = sub_terms[0].Flags();
+            } break;
+
+            case Category::KEYWORD_PRED:
+            case Category::KEYWORD_ISZERO: {
+                auto sub_term = NextTerm();
+
+                if (sub_term.Flags() &
+                    static_cast<unsigned int>(Term::Flag::INVALID)) {
+                    throw std::invalid_argument(
+                        "Error: invalid sub-term start.");
+                }
+
+                flags = static_cast<unsigned int>(Term::Flag::OTHER);
+                sub_terms.emplace_back(sub_term);
+            } break;
+
+                // End of input (parse error):
+            case Category::MARKER_END:
+                throw std::invalid_argument("Error: reached end of input.");
+
+                // Lexing errors:
+            case Category::MARKER_ERROR:
+                throw std::invalid_argument(
+                    "Error: invalid token: " + token.text + ".");
+
+                // Parsing errors:
+            case Category::KEYWORD_THEN:
+            case Category::KEYWORD_ELSE:
+                throw std::invalid_argument("Error: invalid term start " +
+                                            token.text + ".");
+        }
+
+        return Term(token.category, flags, sub_terms);
+    }
+
+   private:
+    lexer::Lexer lexer_;
+};
+}  // namespace parser
+
+namespace interpreter {
+using lexer::Token;
+using parser::Term;
+
+class Interpreter {
+   public:
+    std::string Interpret(Term program) {
+        Term res = Eval(program);
+        return AsString(
+            IsValue(res) ? res : Term(Token::Category::MARKER_ERROR, 0, {}));
+    }
+
+    std::string AsString(Term value) {
+        std::ostringstream ss;
+        ss << value;
+        auto term_str = ss.str();
+
+        if (IsNumericValue(value)) {
+            std::size_t start_pos = 0;
+            int num = 0;
+
+            while ((start_pos = term_str.find("succ", start_pos)) !=
+                   std::string::npos) {
+                ++num;
+                ++start_pos;
+            }
+
+            return std::to_string(num);
+        }
+
+        return term_str;
+    }
+
+    Term Eval(Term term) {
+        try {
+            Term res = Eval1(term);
+            return Eval(res);
+        } catch (std::invalid_argument&) {
+            return term;
+        }
+    }
+
+    Term Eval1(Term term) {
+        switch (term.Category()) {
+            case Token::Category::KEYWORD_IF: {
+                return Eval1If(term);
+            }
+
+            case Token::Category::KEYWORD_SUCC: {
+                term.SubTerm(0) = Eval1(term.SubTerm(0));
+                return term;
+            }
+
+            case Token::Category::KEYWORD_PRED: {
+                return Eval1Pred(term);
+            }
+
+            case Token::Category::KEYWORD_ISZERO: {
+                return Eval1IsZero(term);
+            }
+
+            default:
+                throw std::invalid_argument("No applicable rule.");
+        }
+    }
+
+    Term Eval1If(Term term) {
+        switch (term.SubTerm(0).Category()) {
+            case Token::Category::CONSTANT_TRUE: {
+                return term.SubTerm(1);
+            }
+
+            case Token::Category::CONSTANT_FALSE: {
+                return term.SubTerm(2);
+            }
+
+            default:
+                term.SubTerm(0) = Eval1(term.SubTerm(0));
+                return term;
+        }
+    }
+
+    Term Eval1Pred(Term term) {
+        switch (term.SubTerm(0).Category()) {
+            case Token::Category::CONSTANT_ZERO: {
+                return Term(Token::Category::CONSTANT_ZERO, 0, {});
+            }
+
+            case Token::Category::KEYWORD_SUCC: {
+                if (IsNumericValue(term.SubTerm(0))) {
+                    return term.SubTerm(0).SubTerm(0);
+                } else {
+                    term.SubTerm(0) = Eval1(term.SubTerm(0));
+                    return term;
+                }
+            }
+
+            default:
+                term.SubTerm(0) = Eval1(term.SubTerm(0));
+                return term;
+        }
+    }
+
+    Term Eval1IsZero(Term term) {
+        switch (term.SubTerm(0).Category()) {
+            case Token::Category::CONSTANT_ZERO: {
+                return Term(Token::Category::CONSTANT_TRUE, 0, {});
+            }
+
+            case Token::Category::KEYWORD_SUCC: {
+                if (IsNumericValue(term.SubTerm(0))) {
+                    return Term(Token::Category::CONSTANT_FALSE, 0, {});
+                } else {
+                    term.SubTerm(0) = Eval1(term.SubTerm(0));
+                    return term;
+                }
+            }
+
+            default:
+                term.SubTerm(0) = Eval1(term.SubTerm(0));
+                return term;
+        }
+    }
+
+    bool IsNumericValue(Term term) {
+        return term.Category() == Token::Category::CONSTANT_ZERO ||
+               (term.Category() == Token::Category::KEYWORD_SUCC &&
+                IsNumericValue(term.SubTerm(0)));
+    }
+
+    bool IsValue(Term term) {
+        return term.Category() == Token::Category::CONSTANT_TRUE ||
+               term.Category() == Token::Category::CONSTANT_FALSE ||
+               IsNumericValue(term);
+    }
+};
+}  // namespace interpreter
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr
+            << "Error: expected input program as a command line argument.\n";
+        return 1;
+    }
+
+    parser::Parser parser{std::istringstream{argv[1]}};
+    auto program = parser.ParseProgram();
+    std::cout << "   " << program << "\n";
+
+    interpreter::Interpreter interpreter;
+    std::cout << "=> " << interpreter.Interpret(program) << "\n";
+
+    return 0;
+}
