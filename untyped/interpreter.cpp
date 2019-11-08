@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <stack>
 #include <vector>
 
 namespace lexer {
@@ -28,7 +29,6 @@ class Lexer {
     Token NextToken() {
         if (is_cached_token_valid) {
             is_cached_token_valid = false;
-            // std::cout << cached_token << " <--$\n";
             return cached_token;
         }
 
@@ -49,7 +49,6 @@ class Lexer {
         } else if (next_char == '(') {
             // There is no token before next_char, then create a token of it and
             // clear next_char.
-            // std::cout << "====\n";
             token.category = Token::Category::OPEN_PAREN;
             next_char = 0;
         } else if (next_char == ')') {
@@ -65,7 +64,6 @@ class Lexer {
         } else if (!in_) {
             token.category = Token::Category::MARKER_END;
         } else {
-            // std::cout << "--> " << next_char << "|\n";
             token = NextToken();
         }
 
@@ -82,7 +80,10 @@ class Lexer {
             cached_token.category = Token::Category::CLOSE_PAREN;
         }
 
-        // std::cout << token << " <--\n";
+        if (token.category == Token::Category::MARKER_INVALID) {
+            throw std::invalid_argument("Error: invalide token: " + token.text);
+        }
+
         return token;
     }
 
@@ -138,60 +139,105 @@ class Term {
     friend std::ostream& operator<<(std::ostream&, const Term&);
 
    public:
-    Term() = default;
+    static Term Lambda(std::string arg_name) {
+        Term result;
+        result.lambda_arg_name_ = arg_name;
+        result.is_lambda_ = true;
 
-    explicit Term(std::string name) : var_name_(name) {}
-
-    explicit Term(std::vector<Term>&& sub_terms)
-        : sub_terms_(std::move(sub_terms)) {
-        if (sub_terms_.empty() || sub_terms.size() > 2) {
-            throw std::invalid_argument("Invalid number of sub-terms.");
-        }
+        return result;
     }
 
-    bool IsVariable() const { return !var_name_.empty() && sub_terms_.empty(); }
+    static Term Variable(std::string var_name) {
+        Term result;
+        result.variable_name_ = var_name;
+        result.is_variable_ = true;
 
-    bool IsLambda() const { return sub_terms_.size() == 1; }
+        return result;
+    }
 
-    bool IsApplication() const { return sub_terms_.size() == 2; }
+    static Term Application(std::unique_ptr<Term> lhs,
+                            std::unique_ptr<Term> rhs) {
+        Term result;
+        result.is_application_ = true;
+        result.application_lhs_ = std::move(lhs);
+        result.application_rhs_ = std::move(rhs);
 
-    const Term& operator[](int idx) const {
-        if (IsVariable()) {
-            throw std::logic_error("Trying to access sub-terms of a variable.");
+        return result;
+    }
+
+    Term() = default;
+
+    Term(const Term&) = delete;
+    Term& operator=(const Term&) = delete;
+
+    Term(Term&&) = default;
+    Term& operator=(Term&&) = default;
+
+    bool IsLambda() const { return is_lambda_; }
+
+    bool IsVariable() const { return is_variable_; }
+
+    bool IsApplication() const { return is_application_; }
+    bool IsInvalid() const {
+        if (IsLambda()) {
+            return lambda_arg_name_.empty() || !lambda_body_;
+        } else if (IsVariable()) {
+            return variable_name_.empty();
+        } else if (IsApplication()) {
+            return !application_lhs_ || !application_rhs_;
         }
 
-        if (IsLambda() && idx > 0) {
-            throw std::logic_error(
-                "A λ-abstraction contains a single sub-term.");
+        return true;
+    }
+
+    void Combine(Term&& term) {
+        if (term.IsInvalid()) {
+            throw std::invalid_argument(
+                "Term::Combine() received an invalid Term.");
         }
 
-        if (IsApplication() && idx > 1) {
-            throw std::logic_error("An application contains two sub-term.");
-        }
+        if (IsLambda()) {
+            if (lambda_body_) {
+                lambda_body_->Combine(std::move(term));
+            } else {
+                lambda_body_ = std::make_unique<Term>(std::move(term));
+            }
+        } else if (IsVariable()) {
+            *this = Application(std::make_unique<Term>(std::move(*this)),
+                                std::make_unique<Term>(std::move(term)));
 
-        return sub_terms_[idx];
+            is_variable_ = false;
+            variable_name_ = "";
+        } else if (IsApplication()) {
+            *this = Application(std::make_unique<Term>(std::move(*this)),
+                                std::make_unique<Term>(std::move(term)));
+        } else {
+            *this = std::move(term);
+        }
     }
 
    private:
-    std::string var_name_ = "";
-    // If this Term represents a variable, this field stores its assigned de
-    // Bruijn index in the nameless representation of the program.
-    // int de_bruijn_idx_;
+    bool is_lambda_ = false;
+    std::string lambda_arg_name_ = "";
+    std::unique_ptr<Term> lambda_body_{};
 
-    // This either contains 0, 1 or 2 sub-terms based on whether this Term is a
-    // variable, a λ-abstraction or an application.
-    std::vector<Term> sub_terms_{};
-    bool is_parenthesized_ = false;
+    bool is_variable_ = false;
+    std::string variable_name_ = "";
+
+    bool is_application_ = false;
+    std::unique_ptr<Term> application_lhs_{};
+    std::unique_ptr<Term> application_rhs_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
     if (term.IsVariable()) {
-        out << term.var_name_;
+        out << term.variable_name_;
     } else if (term.IsLambda()) {
-        out << "lambda. {" << term[0] << "}";
+        out << "{λ " << term.lambda_arg_name_ << ". " << *term.lambda_body_
+            << "}";
     } else if (term.IsApplication()) {
-        out << "(" << term[0] << ")<-"
-            << "(" << term[1] << ")";
+        out << "(" << *term.application_lhs_ << " <- " << *term.application_rhs_
+            << ")";
     } else {
         out << "<ERROR>";
     }
@@ -205,53 +251,66 @@ class Parser {
    public:
     Parser(std::istringstream&& in) : lexer_(std::move(in)) {}
 
-    Term NextTerm() {
-        auto token = (is_cached_token_valid)
-                         ? (is_cached_token_valid = false, cached_token)
-                         : lexer_.NextToken();
-        Term result;
+    Term ParseProgram() {
+        Token next_token;
+        std::stack<Term> term_stack;
+        term_stack.emplace(Term());
+        int balance_parens = 0;
 
-        if (token.category == Token::Category::LAMBDA) {
-            ParseVariable();
-            std::cout << "Parsed a variable.\n";
-            ParseDot();
-            std::cout << "Parsed a dot.\n";
-            result = Term(std::vector<Term>{NextTerm()});
-        } else {
-            if (token.category != Token::Category::VARIABLE) {
-                std::cout << "Oops: " << token << "\n";
-                throw std::logic_error("Expected to parse a variable.");
-            }
+        while ((next_token = lexer_.NextToken()).category !=
+               Token::Category::MARKER_END) {
+            if (next_token.category == Token::Category::LAMBDA) {
+                auto lambda_arg = ParseVariable();
+                ParseDot();
+                term_stack.emplace(Term::Lambda(lambda_arg.text));
+            } else if (next_token.category == Token::Category::VARIABLE) {
+                term_stack.top().Combine(Term::Variable(next_token.text));
+            } else if (next_token.category == Token::Category::OPEN_PAREN) {
+                term_stack.emplace(Term());
+                ++balance_parens;
+            } else if (next_token.category == Token::Category::CLOSE_PAREN) {
+                CombineStackTop(term_stack);
 
-            result = Term(token.text);
-            std::cout << "Exepcting a varible: " << token.text << "\n";
-            auto token2 = lexer_.NextToken();
-
-            if (token2.category != Token::Category::MARKER_END) {
-                is_cached_token_valid = true;
-                cached_token = token2;
-                auto term2 = NextTerm();
-
-                // If term2 is itself an application, then switch order of
-                // application to make left-associative.
-                if (term2.IsApplication()) {
-                    result = Term(std::vector<Term>{
-                        Term(std::vector<Term>{result, term2[0]}), term2[1]});
-                } else {
-                    result = Term(std::vector<Term>{result, term2});
+                // A prenthesized λ-abstration is equivalent to a term
+                // double parenthesized term since we push a new term on the
+                // stack for each lambda.
+                if (term_stack.top().IsLambda()) {
+                    CombineStackTop(term_stack);
                 }
 
-                token2 = lexer_.NextToken();
+                --balance_parens;
+            } else {
+                throw std::invalid_argument(
+                    "Unexpected token: " +
+                    (std::ostringstream() << next_token).str());
             }
         }
 
-        return result;
+        if (balance_parens != 0) {
+            throw std::invalid_argument(
+                "Invalid term: probably because a ( is not matched by a )");
+        }
+
+        while (term_stack.size() > 1) {
+            CombineStackTop(term_stack);
+        }
+
+        return std::move(term_stack.top());
+    }
+
+    void CombineStackTop(std::stack<Term>& term_stack) {
+        if (term_stack.size() < 2) {
+            throw std::invalid_argument(
+                "Invalid term: probably because a ( is not matched by a )");
+        }
+
+        Term top = std::move(term_stack.top());
+        term_stack.pop();
+        term_stack.top().Combine(std::move(top));
     }
 
     Token ParseVariable() {
-        auto token = (is_cached_token_valid)
-                         ? (is_cached_token_valid = false, cached_token)
-                         : lexer_.NextToken();
+        auto token = lexer_.NextToken();
 
         return (token.category == Token::Category::VARIABLE)
                    ? token
@@ -259,9 +318,7 @@ class Parser {
     }
 
     Token ParseDot() {
-        auto token = (is_cached_token_valid)
-                         ? (is_cached_token_valid = false, cached_token)
-                         : lexer_.NextToken();
+        auto token = lexer_.NextToken();
 
         return (token.category == Token::Category::LAMBDA_DOT)
                    ? token
@@ -269,9 +326,7 @@ class Parser {
     }
 
     Token ParseCloseParen() {
-        auto token = (is_cached_token_valid)
-                         ? (is_cached_token_valid = false, cached_token)
-                         : lexer_.NextToken();
+        auto token = lexer_.NextToken();
 
         return (token.category == Token::Category::CLOSE_PAREN)
                    ? token
@@ -280,8 +335,6 @@ class Parser {
 
    private:
     lexer::Lexer lexer_;
-    bool is_cached_token_valid = false;
-    Token cached_token;
 };
 }  // namespace parser
 
@@ -304,7 +357,7 @@ int main(int argc, char* argv[]) {
 
     parser::Parser parser{std::istringstream{argv[1]}};
 
-    std::cout << parser.NextTerm() << "\n";
+    std::cout << parser.ParseProgram() << "\n";
 
     return 0;
 }
