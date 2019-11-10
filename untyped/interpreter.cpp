@@ -64,6 +64,7 @@ class Lexer {
         } else if (!in_) {
             token.category = Token::Category::MARKER_END;
         } else {
+            // Must be whitespace, eat it.
             token = NextToken();
         }
 
@@ -147,9 +148,10 @@ class Term {
         return result;
     }
 
-    static Term Variable(std::string var_name) {
+    static Term Variable(std::string var_name, int de_bruijn_idx) {
         Term result;
         result.variable_name_ = var_name;
+        result.de_bruijn_idx_ = de_bruijn_idx;
         result.is_variable_ = true;
 
         return result;
@@ -178,6 +180,7 @@ class Term {
     bool IsVariable() const { return is_variable_; }
 
     bool IsApplication() const { return is_application_; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_body_;
@@ -198,7 +201,18 @@ class Term {
 
         if (IsLambda()) {
             if (lambda_body_) {
-                lambda_body_->Combine(std::move(term));
+                if (is_complete_lambda_) {
+                    *this =
+                        Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
+
+                    is_lambda_ = false;
+                    lambda_body_ = nullptr;
+                    lambda_arg_name_ = "";
+                    is_complete_lambda_ = false;
+                } else {
+                    lambda_body_->Combine(std::move(term));
+                }
             } else {
                 lambda_body_ = std::make_unique<Term>(std::move(term));
             }
@@ -216,6 +230,90 @@ class Term {
         }
     }
 
+    /*
+     * Shifts the de Bruijn indices of all free variables inside this Term up by
+     * distance amount. For an example use, see Term::Substitute(int, Term&).
+     */
+    void Shift(int distance) {
+        std::function<void(int, Term&)> walk = [&distance, &walk](
+                                                   int binding_context_size,
+                                                   Term& term) {
+            if (term.IsVariable()) {
+                if (term.de_bruijn_idx_ >= binding_context_size) {
+                    term.de_bruijn_idx_ += distance;
+                }
+            } else if (term.IsLambda()) {
+                walk(binding_context_size + 1, *term.lambda_body_);
+            } else if (term.IsApplication()) {
+                walk(binding_context_size, *term.application_lhs_);
+                walk(binding_context_size, *term.application_rhs_);
+            } else {
+                throw std::invalid_argument("Trying to shift an invalid term.");
+            }
+        };
+
+        walk(0, *this);
+    }
+
+    /**
+     * Substitutes variable (that is, the de Brijun idex of a variable) with the
+     * term sub.
+     */
+    void Substitute(int variable, Term& sub) {
+        if (IsInvalid() || sub.IsInvalid()) {
+            throw std::invalid_argument(
+                "Trying to substitute using invalid terms.");
+        }
+
+        std::function<void(int, Term&)> walk = [&variable, &sub, &walk](
+                                                   int binding_context_size,
+                                                   Term& term) {
+            if (term.IsVariable()) {
+                // Adjust variable according to the current binding
+                // depth before comparing term's index.
+                if (term.de_bruijn_idx_ == variable + binding_context_size) {
+                    // Shift sub up by binding_context_size distance since sub
+                    // is now substituted in binding_context_size deep context.
+                    sub.Shift(binding_context_size);
+                    std::swap(term, sub);
+                }
+            } else if (term.IsLambda()) {
+                walk(binding_context_size + 1, *term.lambda_body_);
+            } else if (term.IsApplication()) {
+                walk(binding_context_size, *term.application_lhs_);
+                walk(binding_context_size, *term.application_rhs_);
+            }
+        };
+
+        walk(0, *this);
+    }
+
+    Term& LambdaBody() {
+        if (!IsLambda()) {
+            throw std::invalid_argument("Invalid Lambda term.");
+        }
+
+        return *lambda_body_;
+    }
+
+    Term& ApplicationLHS() {
+        if (!IsApplication()) {
+            throw std::invalid_argument("Invalide application term.");
+        }
+
+        return *application_lhs_;
+    }
+
+    Term& ApplicationRHS() {
+        if (!IsApplication()) {
+            throw std::invalid_argument("Invalide application term.");
+        }
+
+        return *application_rhs_;
+    }
+
+    bool is_complete_lambda_ = false;
+
    private:
     bool is_lambda_ = false;
     std::string lambda_arg_name_ = "";
@@ -223,6 +321,7 @@ class Term {
 
     bool is_variable_ = false;
     std::string variable_name_ = "";
+    int de_bruijn_idx_ = -1;
 
     bool is_application_ = false;
     std::unique_ptr<Term> application_lhs_{};
@@ -231,7 +330,7 @@ class Term {
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
     if (term.IsVariable()) {
-        out << term.variable_name_;
+        out << "[" << term.variable_name_ << "=" << term.de_bruijn_idx_ << "]";
     } else if (term.IsLambda()) {
         out << "{λ " << term.lambda_arg_name_ << ". " << *term.lambda_body_
             << "}";
@@ -256,15 +355,41 @@ class Parser {
         std::stack<Term> term_stack;
         term_stack.emplace(Term());
         int balance_parens = 0;
+        // Contains a list of bound variables in order of binding. For example,
+        // for a term λ x. λ y. x y, this list would eventually contains {"x" ,
+        // "y"} in that order. This is used to assign de Bruijn indices/static
+        // distances to bound variables (ref: tapl,§6.1).
+        std::vector<std::string> bound_variables;
 
         while ((next_token = lexer_.NextToken()).category !=
                Token::Category::MARKER_END) {
             if (next_token.category == Token::Category::LAMBDA) {
                 auto lambda_arg = ParseVariable();
+                bound_variables.push_back(lambda_arg.text);
                 ParseDot();
                 term_stack.emplace(Term::Lambda(lambda_arg.text));
             } else if (next_token.category == Token::Category::VARIABLE) {
-                term_stack.top().Combine(Term::Variable(next_token.text));
+                auto bound_variable_it =
+                    std::find(std::begin(bound_variables),
+                              std::end(bound_variables), next_token.text);
+                int de_bruijn_idx = -1;
+
+                if (bound_variable_it != std::end(bound_variables)) {
+                    de_bruijn_idx = std::distance(bound_variable_it,
+                                                  std::end(bound_variables)) -
+                                    1;
+                } else {
+                    // The naming context for free variables (ref: tapl,§6.1.2)
+                    // is chosen to be the ASCII code of a variable's name.
+                    //
+                    // NOTE: Only single-character variable names are currecntly
+                    // supported as free variables.
+                    de_bruijn_idx = bound_variables.size() +
+                                    (std::tolower(next_token.text[0]) - 'a');
+                }
+
+                term_stack.top().Combine(
+                    Term::Variable(next_token.text, de_bruijn_idx));
             } else if (next_token.category == Token::Category::OPEN_PAREN) {
                 term_stack.emplace(Term());
                 ++balance_parens;
@@ -275,6 +400,12 @@ class Parser {
                 // double parenthesized term since we push a new term on the
                 // stack for each lambda.
                 if (term_stack.top().IsLambda()) {
+                    // Mark the λ as complete so that terms to its right won't
+                    // be combined to its body.
+                    term_stack.top().is_complete_lambda_ = true;
+                    // λ's variable is no longer part of the current binding
+                    // context, therefore pop it.
+                    bound_variables.pop_back();
                     CombineStackTop(term_stack);
                 }
 
@@ -338,6 +469,53 @@ class Parser {
 };
 }  // namespace parser
 
+namespace interpreter {
+class Interpreter {
+    using Term = parser::Term;
+
+   public:
+    void Interpret(Term& program) { Eval(program); }
+
+    void Eval(Term& term) {
+        try {
+            Eval1(term);
+            Eval(term);
+        } catch (std::invalid_argument&) {
+        }
+    }
+
+    void Eval1(Term& term) {
+        auto term_subst_top = [](Term& s, Term& t) {
+            // Adjust the free variables in s by increasing their static
+            // distances by 1. That's because s will now be embedded one lever
+            // deeper in t (i.e. t's bound variable will be replaced by s).
+            s.Shift(1);
+            t.Substitute(0, s);
+            // Because of the substitution, one level of abstraction was peeled
+            // off. Account for that by decreasing the static distances of the
+            // free variables in t by 1.
+            t.Shift(-1);
+            // NOTE: For more details see: tapl,§6.3.
+        };
+
+        if (term.IsApplication() && term.ApplicationLHS().IsLambda() &&
+            IsValue(term.ApplicationRHS())) {
+            term_subst_top(term.ApplicationRHS(),
+                           term.ApplicationLHS().LambdaBody());
+            std::swap(term, term.ApplicationLHS().LambdaBody());
+        } else if (term.IsApplication() && IsValue(term.ApplicationLHS())) {
+            Eval1(term.ApplicationRHS());
+        } else if (term.IsApplication()) {
+            Eval1(term.ApplicationLHS());
+        } else {
+            throw std::invalid_argument("No applicable rule.");
+        }
+    }
+
+    bool IsValue(const Term& term) { return term.IsLambda(); }
+};
+}  // namespace interpreter
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr
@@ -345,19 +523,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // lexer::Lexer lexer{std::istringstream{argv[1]}};
-
-    // for (auto token = lexer.NextToken();
-    //     token.category != lexer::Token::Category::MARKER_END;
-    //     token = lexer.NextToken()) {
-    //    std::cout << token << "_";
-    //}
-
-    // std::cout << "\n";
-
     parser::Parser parser{std::istringstream{argv[1]}};
+    auto program = parser.ParseProgram();
 
-    std::cout << parser.ParseProgram() << "\n";
+    std::cout << "   " << program << "\n";
+
+    interpreter::Interpreter interpreter;
+    interpreter.Interpret(program);
+
+    std::cout << "=> " << program << "\n";
 
     return 0;
 }
