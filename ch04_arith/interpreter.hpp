@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -19,6 +21,14 @@ struct Token {
         MARKER_ERROR,
         MARKER_END
     };
+
+    bool operator==(const Token& other) const {
+        return category == other.category && text == other.text;
+    }
+
+    bool operator!=(const Token& other) const { return !(*this == other); }
+
+    std::string DebugString() const;
 
     Category category;
     std::string text;
@@ -108,6 +118,13 @@ std::ostream& operator<<(std::ostream& out, Token::Category token_category) {
 
     return out;
 }
+
+std::string Token::DebugString() const {
+    return (std::ostringstream{} << "{text: " << text
+                                 << ", category: " << category << "}")
+        .str();
+}
+
 }  // namespace lexer
 
 namespace parser {
@@ -439,20 +456,3 @@ class Interpreter {
     }
 };
 }  // namespace interpreter
-
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr
-            << "Error: expected input program as a command line argument.\n";
-        return 1;
-    }
-
-    parser::Parser parser{std::istringstream{argv[1]}};
-    auto program = parser.ParseProgram();
-    std::cout << "   " << program << "\n";
-
-    interpreter::Interpreter interpreter;
-    std::cout << "=> " << interpreter.Interpret(program) << "\n";
-
-    return 0;
-}
