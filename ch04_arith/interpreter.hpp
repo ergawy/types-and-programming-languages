@@ -142,8 +142,8 @@ class Term {
         OTHER = 8
     };
 
-    Term(Cat first_token_category, unsigned int flags,
-         std::vector<Term> sub_terms)
+    Term(Cat first_token_category, std::vector<Term> sub_terms = {},
+         unsigned int flags = 0)
         : first_token_category_(first_token_category),
           flags_(flags),
           sub_terms_(sub_terms) {}
@@ -155,8 +155,82 @@ class Term {
     Term& operator=(Term&&) = default;
 
     unsigned int Flags() const { return flags_; }
-    Cat Category() { return first_token_category_; }
+    Cat Category() const { return first_token_category_; }
     Term& SubTerm(int i) { return sub_terms_[i]; }
+
+    std::string ASTString(int indentation = 0) const {
+        std::ostringstream out;
+        std::string prefix = std::string(indentation, ' ');
+
+        switch (Category()) {
+            case Cat::CONSTANT_ZERO:
+            case Cat::CONSTANT_TRUE:
+            case Cat::CONSTANT_FALSE:
+                out << prefix << Category();
+                break;
+
+            case Cat::KEYWORD_IF:
+                out << prefix << Category() << "\n";
+                out << sub_terms_[0].ASTString(indentation + 2) << "\n";
+                out << prefix << Cat::KEYWORD_ELSE << "\n";
+                out << sub_terms_[1].ASTString(indentation + 2) << "\n";
+                out << prefix << Cat::KEYWORD_THEN << "\n";
+                out << sub_terms_[2].ASTString(indentation + 2);
+                break;
+
+            case Cat::KEYWORD_SUCC:
+            case Cat::KEYWORD_PRED:
+            case Cat::KEYWORD_ISZERO:
+                out << prefix << Category() << "\n";
+                out << sub_terms_[0].ASTString(indentation + 2);
+                break;
+
+            default:
+                break;
+        }
+
+        return out.str();
+    }
+
+    bool operator==(const Term& other) const {
+        if (Category() != other.Category()) {
+            return false;
+        }
+
+        bool res = true;
+
+        switch (Category()) {
+            case Cat::CONSTANT_ZERO:
+            case Cat::CONSTANT_TRUE:
+            case Cat::CONSTANT_FALSE:
+                break;
+
+            case Cat::KEYWORD_IF:
+                for (int i = 0; i < 3; ++i) {
+                    res = res && (sub_terms_[i] == other.sub_terms_[i]);
+
+                    if (!res) {
+                        break;
+                    }
+                }
+
+                break;
+
+            case Cat::KEYWORD_SUCC:
+            case Cat::KEYWORD_PRED:
+            case Cat::KEYWORD_ISZERO:
+                res = res && (sub_terms_[0] == other.sub_terms_[0]);
+
+                break;
+
+            default:
+                break;
+        }
+
+        return res;
+    }
+
+    bool operator!=(const Term& other) const { return !(*this == other); }
 
    private:
     unsigned int flags_ = static_cast<unsigned int>(Flag::INVALID);
@@ -223,6 +297,7 @@ class Parser {
         return program;
     }
 
+   private:
     Term NextTerm() {
         using Category = lexer::Token::Category;
         auto token = lexer_.NextToken();
@@ -311,7 +386,7 @@ class Parser {
                                             token.text + ".");
         }
 
-        return Term(token.category, flags, sub_terms);
+        return Term(token.category, sub_terms, flags);
     }
 
    private:
@@ -327,8 +402,8 @@ class Interpreter {
    public:
     std::string Interpret(Term program) {
         Term res = Eval(program);
-        return AsString(
-            IsValue(res) ? res : Term(Token::Category::MARKER_ERROR, 0, {}));
+        return AsString(IsValue(res) ? res
+                                     : Term(Token::Category::MARKER_ERROR));
     }
 
     std::string AsString(Term value) {
@@ -404,7 +479,7 @@ class Interpreter {
     Term Eval1Pred(Term term) {
         switch (term.SubTerm(0).Category()) {
             case Token::Category::CONSTANT_ZERO: {
-                return Term(Token::Category::CONSTANT_ZERO, 0, {});
+                return Term(Token::Category::CONSTANT_ZERO);
             }
 
             case Token::Category::KEYWORD_SUCC: {
@@ -425,12 +500,12 @@ class Interpreter {
     Term Eval1IsZero(Term term) {
         switch (term.SubTerm(0).Category()) {
             case Token::Category::CONSTANT_ZERO: {
-                return Term(Token::Category::CONSTANT_TRUE, 0, {});
+                return Term(Token::Category::CONSTANT_TRUE);
             }
 
             case Token::Category::KEYWORD_SUCC: {
                 if (IsNumericValue(term.SubTerm(0))) {
-                    return Term(Token::Category::CONSTANT_FALSE, 0, {});
+                    return Term(Token::Category::CONSTANT_FALSE);
                 } else {
                     term.SubTerm(0) = Eval1(term.SubTerm(0));
                     return term;
