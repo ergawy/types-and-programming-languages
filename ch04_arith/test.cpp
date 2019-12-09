@@ -98,8 +98,8 @@ using Category = lexer::Token::Category;
 
 struct TestData {
     std::string input_program_;
-    // The absense of an expected AST means that for the test being specified, a
-    // parse error is expected.
+    // The absense of an expected AST means that: for the test being specified,
+    // a parse error is expected.
     std::optional<Term> expected_ast_;
 };
 
@@ -253,6 +253,7 @@ void Run() {
 
         try {
             res = parser.ParseProgram();
+
             if (*test.expected_ast_ != res) {
                 std::cout << color::kRed << "Test failed:" << color::kReset
                           << "\n";
@@ -269,8 +270,6 @@ void Run() {
 
                 ++num_failed;
             }
-
-            continue;
         } catch (std::exception& ex) {
             if (test.expected_ast_) {
                 // Unexpected parse error.
@@ -317,9 +316,101 @@ void Run() {
 }  // namespace test
 }  // namespace parser
 
+namespace interpreter {
+namespace test {
+
+using namespace utils::test;
+
+struct TestData {
+    std::string input_program_;
+    std::string expected_eval_result_;
+};
+
+std::vector<TestData> kData{
+    TestData{"0", "0"},
+    TestData{"true", "true"},
+    TestData{"false", "false"},
+    TestData{"if false then true else 0", "0"},
+    TestData{"if false then true else false", "false"},
+    TestData{"if false then true else succ 0", "1"},
+    TestData{"if false then true else succ succ 0", "2"},
+    TestData{"if false then true else succ succ succ 0", "3"},
+    TestData{"if succ 0 then succ 0 else true", "<ERROR>"},
+    TestData{"if true then false else true", "false"},
+    TestData{"if true then succ 0 else 0", "1"},
+    TestData{"if true then succ 0 else true", "1"},
+    TestData{"if true then true else succ 0", "true"},
+    TestData{"if if true then false else true then true else false", "false"},
+    TestData{"iszero 0", "true"},
+    TestData{"iszero pred succ succ 0", "false"},
+    TestData{"pred pred 0", "0"},
+    TestData{"pred pred if true then true else false", "<ERROR>"},
+    TestData{"pred succ 0", "0"},
+    TestData{"pred succ if true then true else false", "<ERROR>"},
+    TestData{"pred succ pred 0", "0"},
+    TestData{"pred succ pred succ 0", "0"},
+    TestData{"succ if true then true else false", "<ERROR>"},
+    TestData{"succ succ true", "<ERROR>"},
+};
+
+void Run() {
+    std::cout << color::kYellow << "[Interpreter] Running " << kData.size()
+              << " tests...\n"
+              << color::kReset;
+    int num_failed = 0;
+
+    for (const auto& test : kData) {
+        Interpreter interpreter{};
+        std::string actual_eval_res;
+
+        try {
+            actual_eval_res = interpreter.Interpret(
+                parser::Parser{std::istringstream{test.input_program_}}
+                    .ParseProgram());
+        } catch (std::exception& ex) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  Input program: " << test.input_program_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Expected evaluation result: " << color::kReset
+                      << test.expected_eval_result_ << "\n";
+
+            std::cout << color::kRed << "  Parsing failed." << color::kReset
+                      << "\n";
+
+            ++num_failed;
+            continue;
+        }
+
+        if (actual_eval_res != test.expected_eval_result_) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  Input program: " << test.input_program_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Expected evaluation result: " << color::kReset
+                      << test.expected_eval_result_ << "\n";
+
+            std::cout << color::kRed
+                      << "  Actual evaluation result: " << color::kReset
+                      << actual_eval_res << "\n";
+
+            ++num_failed;
+        }
+    }
+
+    std::cout << color::kYellow << "Results: " << color::kReset
+              << (kData.size() - num_failed) << " out of " << kData.size()
+              << " tests passed.\n";
+}
+}  // namespace test
+}  // namespace interpreter
+
 int main() {
     lexer::test::Run();
     parser::test::Run();
+    interpreter::test::Run();
 
     return 0;
 }
