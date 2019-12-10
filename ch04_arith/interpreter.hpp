@@ -135,18 +135,8 @@ class Term {
                                     const Term& token_category);
 
    public:
-    enum class Flag {
-        INVALID = 1,
-        VALUE = 2,
-        NUMERIC_VALUE = 6, /* A NUMERIC_VALUE is also a VALUE. */
-        OTHER = 8
-    };
-
-    Term(Cat first_token_category, std::vector<Term> sub_terms = {},
-         unsigned int flags = 0)
-        : first_token_category_(first_token_category),
-          flags_(flags),
-          sub_terms_(sub_terms) {}
+    Term(Cat first_token_category, std::vector<Term> sub_terms = {})
+        : first_token_category_(first_token_category), sub_terms_(sub_terms) {}
 
     Term() = default;
     Term(const Term&) = default;
@@ -154,7 +144,6 @@ class Term {
     Term& operator=(const Term&) = default;
     Term& operator=(Term&&) = default;
 
-    unsigned int Flags() const { return flags_; }
     Cat Category() const { return first_token_category_; }
     Term& SubTerm(int i) { return sub_terms_[i]; }
 
@@ -233,37 +222,10 @@ class Term {
     bool operator!=(const Term& other) const { return !(*this == other); }
 
    private:
-    unsigned int flags_ = static_cast<unsigned int>(Flag::INVALID);
     // Category of the first token in a term speicifies the type of the term.
     Cat first_token_category_;
     std::vector<Term> sub_terms_;
 };
-
-std::ostream& operator<<(std::ostream& out, const Term::Flag& flag) {
-    using Flag = Term::Flag;
-    switch (flag) {
-        case Flag::INVALID:
-            out << "INAVLID";
-            break;
-
-        case Flag::VALUE:
-            out << "VALUE";
-            break;
-
-        case Flag::NUMERIC_VALUE:
-            out << "NUMERIC_VALUE";
-            break;
-
-        case Flag::OTHER:
-            out << "OTHER";
-            break;
-
-        default:
-            out << "<UNKNOWN_TERM_FLAG>";
-    }
-
-    return out;
-}
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
     using Category = lexer::Token::Category;
@@ -302,23 +264,18 @@ class Parser {
         using Category = lexer::Token::Category;
         auto token = lexer_.NextToken();
 
-        unsigned int flags = 0;
         std::vector<Term> sub_terms;
 
         switch (token.category) {
                 // Possible terms:
             case Category::CONSTANT_TRUE:
             case Category::CONSTANT_FALSE:
-                flags = static_cast<unsigned int>(Term::Flag::VALUE);
                 break;
 
             case Category::CONSTANT_ZERO:
-                flags = static_cast<unsigned int>(Term::Flag::NUMERIC_VALUE);
                 break;
 
             case Category::KEYWORD_IF: {
-                flags = static_cast<unsigned int>(Term::Flag::OTHER);
-
                 // Add condition sub-term.
                 sub_terms.emplace_back(NextTerm());
 
@@ -343,30 +300,12 @@ class Parser {
 
             case Category::KEYWORD_SUCC: {
                 auto sub_term = NextTerm();
-
-                if (sub_term.Flags() &
-                    static_cast<unsigned int>(Term::Flag::INVALID)) {
-                    throw std::invalid_argument(
-                        "Error: invalid sub-term start.");
-                }
-
                 sub_terms.emplace_back(sub_term);
-                // Propagate the sub-term's flags (e.g. if the sub-term is a
-                // numeric value then this term is a numeric value as well).
-                flags = sub_terms[0].Flags();
             } break;
 
             case Category::KEYWORD_PRED:
             case Category::KEYWORD_ISZERO: {
                 auto sub_term = NextTerm();
-
-                if (sub_term.Flags() &
-                    static_cast<unsigned int>(Term::Flag::INVALID)) {
-                    throw std::invalid_argument(
-                        "Error: invalid sub-term start.");
-                }
-
-                flags = static_cast<unsigned int>(Term::Flag::OTHER);
                 sub_terms.emplace_back(sub_term);
             } break;
 
@@ -386,7 +325,7 @@ class Parser {
                                             token.text + ".");
         }
 
-        return Term(token.category, sub_terms, flags);
+        return Term(token.category, sub_terms);
     }
 
    private:
@@ -406,6 +345,7 @@ class Interpreter {
                                      : Term(Token::Category::MARKER_ERROR));
     }
 
+   private:
     std::string AsString(Term value) {
         std::ostringstream ss;
         ss << value;

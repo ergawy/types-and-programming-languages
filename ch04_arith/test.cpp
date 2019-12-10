@@ -2,6 +2,32 @@
 
 #include "interpreter.hpp"
 
+namespace lexer {
+namespace test {
+void Run();
+}
+}  // namespace lexer
+
+namespace parser {
+namespace test {
+void Run();
+}
+}  // namespace parser
+
+namespace interpreter {
+namespace test {
+void Run();
+}
+}  // namespace interpreter
+
+int main() {
+    lexer::test::Run();
+    parser::test::Run();
+    interpreter::test::Run();
+
+    return 0;
+}
+
 namespace utils {
 namespace test {
 namespace color {
@@ -407,10 +433,3 @@ void Run() {
 }  // namespace test
 }  // namespace interpreter
 
-int main() {
-    lexer::test::Run();
-    parser::test::Run();
-    interpreter::test::Run();
-
-    return 0;
-}
