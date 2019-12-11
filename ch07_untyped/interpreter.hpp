@@ -1,10 +1,10 @@
-#include <iostream>
 #include <sstream>
 #include <stack>
 #include <vector>
 
 namespace lexer {
-struct Token {
+class Token {
+   public:
     enum class Category {
         VARIABLE,
         LAMBDA,
@@ -15,9 +15,25 @@ struct Token {
         MARKER_INVALID
     };
 
-    Category category = Category::MARKER_INVALID;
-    std::string text;
+    Token(Category category = Category::MARKER_INVALID, std::string text = "")
+        : category_(category),
+          text_(category == Category::VARIABLE ? text : "") {}
+
+    bool operator==(const Token& other) const {
+        return category_ == other.category_ && text_ == other.text_;
+    }
+
+    bool operator!=(const Token& other) const { return !(*this == other); }
+
+    Category GetCategory() const { return category_; }
+
+    std::string GetText() const { return text_; }
+
+   private:
+    Category category_ = Category::MARKER_INVALID;
+    std::string text_;
 };
+
 std::ostream& operator<<(std::ostream& out, Token token);
 
 class Lexer {
@@ -33,36 +49,39 @@ class Lexer {
         }
 
         Token token;
+
         char next_char = 0;
         std::ostringstream token_text_out;
         while (in_.get(next_char) && !IsSeparator(next_char)) {
             token_text_out << next_char;
         }
 
+        Token::Category token_category;
         auto token_text = token_text_out.str();
 
         if (token_text == kLambdaInputSymbol) {
-            token.category = Token::Category::LAMBDA;
-        } else if (!token_text.empty()) {
-            token.category = Token::Category::VARIABLE;
-            token.text = token_text;
+            token = Token(Token::Category::LAMBDA);
+        } else if (IsVariableName(token_text)) {
+            token = Token(Token::Category::VARIABLE, token_text);
         } else if (next_char == '(') {
             // There is no token before next_char, then create a token of it and
             // clear next_char.
-            token.category = Token::Category::OPEN_PAREN;
+            token = Token(Token::Category::OPEN_PAREN);
             next_char = 0;
         } else if (next_char == ')') {
             // There is no token before next_char, then create a token of it and
             // clear next_char.
-            token.category = Token::Category::CLOSE_PAREN;
+            token = Token(Token::Category::CLOSE_PAREN);
             next_char = 0;
         } else if (next_char == '.') {
             // There is no token before next_char, then create a token of it and
             // clear next_char.
-            token.category = Token::Category::LAMBDA_DOT;
+            token = Token(Token::Category::LAMBDA_DOT);
             next_char = 0;
+        } else if (!token_text.empty()) {
+            token = Token(Token::Category::MARKER_INVALID);
         } else if (!in_) {
-            token.category = Token::Category::MARKER_END;
+            token = Token(Token::Category::MARKER_END);
         } else {
             // Must be whitespace, eat it.
             token = NextToken();
@@ -72,25 +91,35 @@ class Lexer {
         // next_char's token for next call to NextToken().
         if (next_char == '.') {
             is_cached_token_valid = true;
-            cached_token.category = Token::Category::LAMBDA_DOT;
+            cached_token = Token(Token::Category::LAMBDA_DOT);
         } else if (next_char == '(') {
             is_cached_token_valid = true;
-            cached_token.category = Token::Category::OPEN_PAREN;
+            cached_token = Token(Token::Category::OPEN_PAREN);
         } else if (next_char == ')') {
             is_cached_token_valid = true;
-            cached_token.category = Token::Category::CLOSE_PAREN;
-        }
-
-        if (token.category == Token::Category::MARKER_INVALID) {
-            throw std::invalid_argument("Error: invalide token: " + token.text);
+            cached_token = Token(Token::Category::CLOSE_PAREN);
         }
 
         return token;
     }
 
    private:
-    bool IsSeparator(char c) {
+    bool IsSeparator(char c) const {
         return std::string{" .()"}.find(c) != std::string::npos;
+    }
+
+    bool IsVariableName(const std::string& text) const {
+        if (text.empty()) {
+            return false;
+        }
+
+        for (char c : text) {
+            if (!std::islower(c) && !std::isupper(c) && (c != '_')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
    private:
@@ -102,12 +131,12 @@ class Lexer {
 const std::string Lexer::kLambdaInputSymbol = "l";
 
 std::ostream& operator<<(std::ostream& out, Token token) {
-    switch (token.category) {
+    switch (token.GetCategory()) {
         case Token::Category::LAMBDA:
             out << "lambda";
             break;
         case Token::Category::VARIABLE:
-            out << token.text;
+            out << token.GetText();
             break;
         case Token::Category::LAMBDA_DOT:
             out << ".";
@@ -361,17 +390,17 @@ class Parser {
         // distances to bound variables (ref: tapl,§6.1).
         std::vector<std::string> bound_variables;
 
-        while ((next_token = lexer_.NextToken()).category !=
+        while ((next_token = lexer_.NextToken()).GetCategory() !=
                Token::Category::MARKER_END) {
-            if (next_token.category == Token::Category::LAMBDA) {
+            if (next_token.GetCategory() == Token::Category::LAMBDA) {
                 auto lambda_arg = ParseVariable();
-                bound_variables.push_back(lambda_arg.text);
+                bound_variables.push_back(lambda_arg.GetText());
                 ParseDot();
-                term_stack.emplace(Term::Lambda(lambda_arg.text));
-            } else if (next_token.category == Token::Category::VARIABLE) {
+                term_stack.emplace(Term::Lambda(lambda_arg.GetText()));
+            } else if (next_token.GetCategory() == Token::Category::VARIABLE) {
                 auto bound_variable_it =
                     std::find(std::begin(bound_variables),
-                              std::end(bound_variables), next_token.text);
+                              std::end(bound_variables), next_token.GetText());
                 int de_bruijn_idx = -1;
 
                 if (bound_variable_it != std::end(bound_variables)) {
@@ -384,16 +413,19 @@ class Parser {
                     //
                     // NOTE: Only single-character variable names are currecntly
                     // supported as free variables.
-                    de_bruijn_idx = bound_variables.size() +
-                                    (std::tolower(next_token.text[0]) - 'a');
+                    de_bruijn_idx =
+                        bound_variables.size() +
+                        (std::tolower(next_token.GetText()[0]) - 'a');
                 }
 
                 term_stack.top().Combine(
-                    Term::Variable(next_token.text, de_bruijn_idx));
-            } else if (next_token.category == Token::Category::OPEN_PAREN) {
+                    Term::Variable(next_token.GetText(), de_bruijn_idx));
+            } else if (next_token.GetCategory() ==
+                       Token::Category::OPEN_PAREN) {
                 term_stack.emplace(Term());
                 ++balance_parens;
-            } else if (next_token.category == Token::Category::CLOSE_PAREN) {
+            } else if (next_token.GetCategory() ==
+                       Token::Category::CLOSE_PAREN) {
                 CombineStackTop(term_stack);
 
                 // A prenthesized λ-abstration is equivalent to a term
@@ -443,7 +475,7 @@ class Parser {
     Token ParseVariable() {
         auto token = lexer_.NextToken();
 
-        return (token.category == Token::Category::VARIABLE)
+        return (token.GetCategory() == Token::Category::VARIABLE)
                    ? token
                    : throw std::logic_error("Expected to parse a variable.");
     }
@@ -451,7 +483,7 @@ class Parser {
     Token ParseDot() {
         auto token = lexer_.NextToken();
 
-        return (token.category == Token::Category::LAMBDA_DOT)
+        return (token.GetCategory() == Token::Category::LAMBDA_DOT)
                    ? token
                    : throw std::logic_error("Expected to parse a dot.");
     }
@@ -459,7 +491,7 @@ class Parser {
     Token ParseCloseParen() {
         auto token = lexer_.NextToken();
 
-        return (token.category == Token::Category::CLOSE_PAREN)
+        return (token.GetCategory() == Token::Category::CLOSE_PAREN)
                    ? token
                    : throw std::logic_error("Expected to parse a ')'.");
     }
@@ -516,22 +548,3 @@ class Interpreter {
 };
 }  // namespace interpreter
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr
-            << "Error: expected input program as a command line argument.\n";
-        return 1;
-    }
-
-    parser::Parser parser{std::istringstream{argv[1]}};
-    auto program = parser.ParseProgram();
-
-    std::cout << "   " << program << "\n";
-
-    interpreter::Interpreter interpreter;
-    interpreter.Interpret(program);
-
-    std::cout << "=> " << program << "\n";
-
-    return 0;
-}
