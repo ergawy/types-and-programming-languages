@@ -14,7 +14,13 @@ struct Token {
         COLON,
         ARROW,
 
+        CONSTANT_TRUE,
+        CONSTANT_FALSE,
+
         KEYWORD_BOOL,
+        KEYWORD_IF,
+        KEYWORD_THEN,
+        KEYWORD_ELSE,
 
         MARKER_END,
         MARKER_INVALID
@@ -53,7 +59,17 @@ class Lexer {
 
         auto token_text = token_text_out.str();
 
-        if (token_text == kLambdaInputSymbol) {
+        if (token_text == "true") {
+            token.category = Token::Category::CONSTANT_TRUE;
+        } else if (token_text == "false") {
+            token.category = Token::Category::CONSTANT_FALSE;
+        } else if (token_text == "if") {
+            token.category = Token::Category::KEYWORD_IF;
+        } else if (token_text == "then") {
+            token.category = Token::Category::KEYWORD_THEN;
+        } else if (token_text == "else") {
+            token.category = Token::Category::KEYWORD_ELSE;
+        } else if (token_text == kLambdaInputSymbol) {
             token.category = Token::Category::LAMBDA;
         } else if (token_text == kKeywordBool) {
             token.category = Token::Category::KEYWORD_BOOL;
@@ -61,23 +77,23 @@ class Lexer {
             token.category = Token::Category::VARIABLE;
             token.text = token_text;
         } else if (next_char == '(') {
-            // There is no token before next_char, then create a token of it and
-            // clear next_char.
+            // There is no token before next_char, then create a token of it
+            // and clear next_char.
             token.category = Token::Category::OPEN_PAREN;
             next_char = 0;
         } else if (next_char == ')') {
-            // There is no token before next_char, then create a token of it and
-            // clear next_char.
+            // There is no token before next_char, then create a token of it
+            // and clear next_char.
             token.category = Token::Category::CLOSE_PAREN;
             next_char = 0;
         } else if (next_char == '.') {
-            // There is no token before next_char, then create a token of it and
-            // clear next_char.
+            // There is no token before next_char, then create a token of it
+            // and clear next_char.
             token.category = Token::Category::LAMBDA_DOT;
             next_char = 0;
         } else if (next_char == ':') {
-            // There is no token before next_char, then create a token of it and
-            // clear next_char.
+            // There is no token before next_char, then create a token of it
+            // and clear next_char.
             token.category = Token::Category::COLON;
             next_char = 0;
         } else if (next_char == '-') {
@@ -96,8 +112,8 @@ class Lexer {
             token = NextToken();
         }
 
-        // There is a token before next_char, then return that token and cache
-        // next_char's token for next call to NextToken().
+        // There is a token before next_char, then return that token and
+        // cache next_char's token for next call to NextToken().
         if (next_char == '.') {
             is_cached_token_valid = true;
             cached_token.category = Token::Category::LAMBDA_DOT;
@@ -148,7 +164,7 @@ std::ostream& operator<<(std::ostream& out, Token token) {
             out << "λ";
             break;
         case Token::Category::KEYWORD_BOOL:
-            out << "Ɓ";
+            out << "<Bool>";
             break;
         case Token::Category::VARIABLE:
             out << token.text;
@@ -168,6 +184,23 @@ std::ostream& operator<<(std::ostream& out, Token token) {
         case Token::Category::ARROW:
             out << "→";
             break;
+
+        case Token::Category::CONSTANT_TRUE:
+            out << "<true>";
+            break;
+        case Token::Category::CONSTANT_FALSE:
+            out << "<false>";
+            break;
+        case Token::Category::KEYWORD_IF:
+            out << "<if>";
+            break;
+        case Token::Category::KEYWORD_THEN:
+            out << "<then>";
+            break;
+        case Token::Category::KEYWORD_ELSE:
+            out << "<else>";
+            break;
+
         case Token::Category::MARKER_END:
             out << "<END>";
             break;
@@ -185,15 +218,20 @@ std::ostream& operator<<(std::ostream& out, Token token) {
 }  // namespace lexer
 
 namespace parser {
+struct Binding {
+    std::string name;
+    std::vector<lexer::Token> type;
+};
 
 class Term {
     friend std::ostream& operator<<(std::ostream&, const Term&);
 
    public:
-    static Term Lambda(std::string arg_name) {
+    static Term Lambda(Binding binding) {
         Term result;
-        result.lambda_arg_name_ = arg_name;
+        result.lambda_arg_name_ = binding.name;
         result.is_lambda_ = true;
+        result.lambda_type_ = binding.type;
 
         return result;
     }
@@ -217,6 +255,27 @@ class Term {
         return result;
     }
 
+    static Term ConstantTrue() {
+        Term result;
+        result.is_true_constant_ = true;
+
+        return result;
+    }
+
+    static Term ConstantFalse() {
+        Term result;
+        result.is_false_constant_ = true;
+
+        return result;
+    }
+
+    static Term Conditional() {
+        Term result;
+        result.is_conditional_ = true;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -231,13 +290,24 @@ class Term {
 
     bool IsApplication() const { return is_application_; }
 
+    bool IsBoolConst() const { return is_true_constant_ || is_false_constant_; }
+
+    bool IsConditional() const { return is_conditional_; }
+
     bool IsInvalid() const {
+        // NOTE: Should this be recursive instead of simply checking the
+        // pointers contents?
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_body_;
         } else if (IsVariable()) {
             return variable_name_.empty();
         } else if (IsApplication()) {
             return !application_lhs_ || !application_rhs_;
+        } else if (IsBoolConst()) {
+            return false;
+        } else if (IsConditional()) {
+            return !conditional_cond_ || !conditional_then_branch_ ||
+                   !conditional_else_branch_;
         }
 
         return true;
@@ -251,6 +321,9 @@ class Term {
 
         if (IsLambda()) {
             if (lambda_body_) {
+                // If this is a completely parsed lambda, then the combination's
+                // result is an application. In that case, term is the argument
+                // to this lambda.
                 if (is_complete_lambda_) {
                     *this =
                         Application(std::make_unique<Term>(std::move(*this)),
@@ -261,6 +334,7 @@ class Term {
                     lambda_arg_name_ = "";
                     is_complete_lambda_ = false;
                 } else {
+                    // If not, term is part of the lambda's body.
                     lambda_body_->Combine(std::move(term));
                 }
             } else {
@@ -275,14 +349,53 @@ class Term {
         } else if (IsApplication()) {
             *this = Application(std::make_unique<Term>(std::move(*this)),
                                 std::make_unique<Term>(std::move(term)));
+        } else if (IsBoolConst()) {
+            throw std::logic_error("Cannot combine term with a Bool constatn.");
+        } else if (IsConditional()) {
+            if (!cond_built_) {
+                if (conditional_cond_) {
+                    conditional_cond_->Combine(std::move(term));
+                } else {
+                    conditional_cond_ = std::make_unique<Term>(std::move(term));
+                }
+            } else if (!then_branch_built_) {
+                if (conditional_then_branch_) {
+                    conditional_then_branch_->Combine(std::move(term));
+                } else {
+                    conditional_then_branch_ =
+                        std::make_unique<Term>(std::move(term));
+                }
+            } else if (!else_branch_built_) {
+                if (conditional_else_branch_) {
+                    conditional_else_branch_->Combine(std::move(term));
+                } else {
+                    conditional_else_branch_ =
+                        std::make_unique<Term>(std::move(term));
+                }
+            } else {
+                // A complete conditional, then term is an argument to result of
+                // evaluating the conditional.
+                // For example: (if true then (l x. true) else (l x. x)) y.
+                *this = Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
+
+                is_conditional_ = false;
+                conditional_cond_ = nullptr;
+                conditional_then_branch_ = nullptr;
+                conditional_else_branch_ = nullptr;
+                cond_built_ = false;
+                then_branch_built_ = false;
+                else_branch_built_ = false;
+            }
         } else {
             *this = std::move(term);
         }
     }
 
     /*
-     * Shifts the de Bruijn indices of all free variables inside this Term up by
-     * distance amount. For an example use, see Term::Substitute(int, Term&).
+     * Shifts the de Bruijn indices of all free variables inside this Term
+     * up by distance amount. For an example use, see Term::Substitute(int,
+     * Term&).
      */
     void Shift(int distance) {
         std::function<void(int, Term&)> walk = [&distance, &walk](
@@ -306,8 +419,8 @@ class Term {
     }
 
     /**
-     * Substitutes variable (that is, the de Brijun idex of a variable) with the
-     * term sub.
+     * Substitutes variable (that is, the de Brijun idex of a variable) with
+     * the term sub.
      */
     void Substitute(int variable, Term& sub) {
         if (IsInvalid() || sub.IsInvalid()) {
@@ -322,8 +435,9 @@ class Term {
                 // Adjust variable according to the current binding
                 // depth before comparing term's index.
                 if (term.de_bruijn_idx_ == variable + binding_context_size) {
-                    // Shift sub up by binding_context_size distance since sub
-                    // is now substituted in binding_context_size deep context.
+                    // Shift sub up by binding_context_size distance
+                    // since sub is now substituted in
+                    // binding_context_size deep context.
                     sub.Shift(binding_context_size);
                     std::swap(term, sub);
                 }
@@ -363,11 +477,15 @@ class Term {
     }
 
     bool is_complete_lambda_ = false;
+    bool cond_built_ = false;
+    bool then_branch_built_ = false;
+    bool else_branch_built_ = false;
 
    private:
     bool is_lambda_ = false;
     std::string lambda_arg_name_ = "";
     std::unique_ptr<Term> lambda_body_{};
+    std::vector<lexer::Token> lambda_type_;
 
     bool is_variable_ = false;
     std::string variable_name_ = "";
@@ -376,17 +494,39 @@ class Term {
     bool is_application_ = false;
     std::unique_ptr<Term> application_lhs_{};
     std::unique_ptr<Term> application_rhs_{};
+
+    bool is_true_constant_ = false;
+
+    bool is_false_constant_ = false;
+
+    bool is_conditional_ = false;
+    std::unique_ptr<Term> conditional_cond_{};
+    std::unique_ptr<Term> conditional_then_branch_{};
+    std::unique_ptr<Term> conditional_else_branch_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
     if (term.IsVariable()) {
         out << "[" << term.variable_name_ << "=" << term.de_bruijn_idx_ << "]";
     } else if (term.IsLambda()) {
-        out << "{λ " << term.lambda_arg_name_ << ". " << *term.lambda_body_
-            << "}";
+        out << "{λ " << term.lambda_arg_name_ << ":";
+
+        for (const auto& t : term.lambda_type_) {
+            out << t;
+        }
+
+        out << ". " << *term.lambda_body_ << "}";
     } else if (term.IsApplication()) {
         out << "(" << *term.application_lhs_ << " <- " << *term.application_rhs_
             << ")";
+    } else if (term.is_true_constant_) {
+        out << "<true>";
+    } else if (term.is_false_constant_) {
+        out << "<false>";
+    } else if (term.IsConditional()) {
+        out << "<if> " << *term.conditional_cond_ << " <then> "
+            << *term.conditional_then_branch_ << " <else> "
+            << *term.conditional_else_branch_;
     } else {
         out << "<ERROR>";
     }
@@ -394,11 +534,19 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     return out;
 }
 
+// Known issue:
+// ./a.out "(l z:Bool. if true then (l y:Bool. z y) else (l x:Bool. z x)) w"
+// Probably can be solved by attaching to each ( the type of the token that came
+// right after.
 class Parser {
     using Token = lexer::Token;
 
    public:
     Parser(std::istringstream&& in) : lexer_(std::move(in)) {}
+
+    void AddBinding(std::vector<Binding>& context, Binding binding) {
+        context.push_back(binding);
+    }
 
     Term ParseProgram() {
         Token next_token;
@@ -409,33 +557,34 @@ class Parser {
         // for a term λ x. λ y. x y, this list would eventually contains {"x" ,
         // "y"} in that order. This is used to assign de Bruijn indices/static
         // distances to bound variables (ref: tapl,§6.1).
-        std::vector<std::string> bound_variables;
+        std::vector<Binding> context;
 
         while ((next_token = lexer_.NextToken()).category !=
                Token::Category::MARKER_END) {
             if (next_token.category == Token::Category::LAMBDA) {
                 auto lambda_arg = ParseVariable();
-                bound_variables.push_back(lambda_arg.text);
                 ParseColon();
-                ParseType();
-                term_stack.emplace(Term::Lambda(lambda_arg.text));
+                Binding binding{lambda_arg.text, ParseType()};
+                AddBinding(context, binding);
+                term_stack.emplace(Term::Lambda(binding));
             } else if (next_token.category == Token::Category::VARIABLE) {
                 auto bound_variable_it =
-                    std::find(std::begin(bound_variables),
-                              std::end(bound_variables), next_token.text);
+                    std::find_if(std::begin(context), std::end(context),
+                                 [&next_token](const Binding& b) {
+                                     return b.name == next_token.text;
+                                 });
                 int de_bruijn_idx = -1;
 
-                if (bound_variable_it != std::end(bound_variables)) {
-                    de_bruijn_idx = std::distance(bound_variable_it,
-                                                  std::end(bound_variables)) -
-                                    1;
+                if (bound_variable_it != std::end(context)) {
+                    de_bruijn_idx =
+                        std::distance(bound_variable_it, std::end(context)) - 1;
                 } else {
                     // The naming context for free variables (ref: tapl,§6.1.2)
                     // is chosen to be the ASCII code of a variable's name.
                     //
                     // NOTE: Only single-character variable names are currecntly
                     // supported as free variables.
-                    de_bruijn_idx = bound_variables.size() +
+                    de_bruijn_idx = context.size() +
                                     (std::tolower(next_token.text[0]) - 'a');
                 }
 
@@ -448,19 +597,60 @@ class Parser {
                 CombineStackTop(term_stack);
 
                 // A prenthesized λ-abstration is equivalent to a double
-                // parenthesized term since we push a new term on the stack for
-                // each lambda.
+                // parenthesized term since we push a new term on the stack
+                // for each lambda.
                 if (term_stack.top().IsLambda()) {
-                    // Mark the λ as complete so that terms to its right won't
-                    // be combined to its body.
+                    std::cout << "Closing a lambda.\n";
+                    // Mark the λ as complete so that terms to its right
+                    // won't be combined to its body.
                     term_stack.top().is_complete_lambda_ = true;
                     // λ's variable is no longer part of the current binding
                     // context, therefore pop it.
-                    bound_variables.pop_back();
+                    context.pop_back();
+                    CombineStackTop(term_stack);
+                } else if (term_stack.top().IsConditional()) {
+                    std::cout << "Closing an if.\n";
+                    term_stack.top().else_branch_built_ = true;
                     CombineStackTop(term_stack);
                 }
 
                 --balance_parens;
+            } else if (next_token.category == Token::Category::CONSTANT_TRUE) {
+                term_stack.top().Combine(Term::ConstantTrue());
+            } else if (next_token.category == Token::Category::CONSTANT_FALSE) {
+                term_stack.top().Combine(Term::ConstantFalse());
+            } else if (next_token.category == Token::Category::KEYWORD_IF) {
+                term_stack.push(Term::Conditional());
+                // Push an empty term for to build the condition.
+                term_stack.push(Term());
+            } else if (next_token.category == Token::Category::KEYWORD_THEN) {
+                if (term_stack.size() < 2) {
+                    throw std::invalid_argument("Syntax error.");
+                }
+
+                CombineStackTop(term_stack);
+
+                if (!term_stack.top().IsConditional()) {
+                    throw std::invalid_argument("Syntax error.");
+                }
+
+                term_stack.top().cond_built_ = true;
+                // Push an empty term for to build the then branch.
+                term_stack.push(Term());
+            } else if (next_token.category == Token::Category::KEYWORD_ELSE) {
+                if (term_stack.size() < 2) {
+                    throw std::invalid_argument("Syntax error.");
+                }
+
+                CombineStackTop(term_stack);
+
+                if (!term_stack.top().IsConditional()) {
+                    throw std::invalid_argument("Syntax error.");
+                }
+
+                term_stack.top().then_branch_built_ = true;
+                // Push an empty term for to build the else branch.
+                term_stack.push(Term());
             } else {
                 throw std::invalid_argument(
                     "Unexpected token: " +
@@ -510,12 +700,11 @@ class Parser {
 
             next = lexer_.NextToken();
 
-            // So far, types can only exist in abstraction definitions and is
-            // always expected to be followed by a dot. Therefore, ther is no
-            // need to implement buffering or the ability to look ahead tokens
-            // from the lexer.
+            // So far, types can only exist in abstraction definitions and
+            // is always expected to be followed by a dot. Therefore, ther
+            // is no need to implement buffering or the ability to look
+            // ahead tokens from the lexer.
             if (next.category == Token::Category::LAMBDA_DOT) {
-                // type.push_back(next);
                 break;
             } else {
                 (next.category == Token::Category::ARROW)
@@ -610,20 +799,20 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    lexer::Lexer lexer{std::istringstream{argv[1]}};
+    // lexer::Lexer lexer{std::istringstream{argv[1]}};
 
-    for (auto token = lexer.NextToken();
-         token.category != lexer::Token::Category::MARKER_END;
-         token = lexer.NextToken()) {
-        std::cout << token << " ";
-    }
+    // for (auto token = lexer.NextToken();
+    //     token.category != lexer::Token::Category::MARKER_END;
+    //     token = lexer.NextToken()) {
+    //    std::cout << token << " ";
+    //}
 
-    std::cout << "\n";
+    // std::cout << "\n";
 
-    // parser::Parser parser{std::istringstream{argv[1]}};
-    // auto program = parser.ParseProgram();
+    parser::Parser parser{std::istringstream{argv[1]}};
+    auto program = parser.ParseProgram();
 
-    // std::cout << "   " << program << "\n";
+    std::cout << "   " << program << "\n";
 
     // interpreter::Interpreter interpreter;
     // interpreter.Interpret(program);
