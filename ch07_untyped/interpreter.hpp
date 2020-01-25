@@ -204,6 +204,8 @@ class Term {
     Term(Term&&) = default;
     Term& operator=(Term&&) = default;
 
+    ~Term() = default;
+
     bool IsLambda() const { return is_lambda_; }
 
     bool IsVariable() const { return is_variable_; }
@@ -222,7 +224,7 @@ class Term {
         return true;
     }
 
-    void Combine(Term&& term) {
+    Term& Combine(Term&& term) {
         if (term.IsInvalid()) {
             throw std::invalid_argument(
                 "Term::Combine() received an invalid Term.");
@@ -257,6 +259,8 @@ class Term {
         } else {
             *this = std::move(term);
         }
+
+        return *this;
     }
 
     /*
@@ -317,7 +321,7 @@ class Term {
         walk(0, *this);
     }
 
-    Term& LambdaBody() {
+    Term& LambdaBody() const {
         if (!IsLambda()) {
             throw std::invalid_argument("Invalid Lambda term.");
         }
@@ -325,7 +329,7 @@ class Term {
         return *lambda_body_;
     }
 
-    Term& ApplicationLHS() {
+    Term& ApplicationLHS() const {
         if (!IsApplication()) {
             throw std::invalid_argument("Invalide application term.");
         }
@@ -333,12 +337,49 @@ class Term {
         return *application_lhs_;
     }
 
-    Term& ApplicationRHS() {
+    Term& ApplicationRHS() const {
         if (!IsApplication()) {
             throw std::invalid_argument("Invalide application term.");
         }
 
         return *application_rhs_;
+    }
+
+    bool operator==(const Term& other) const {
+        if (IsLambda() && other.IsLambda()) {
+            return LambdaBody() == other.LambdaBody();
+        }
+
+        if (IsVariable() && other.IsVariable()) {
+            return de_bruijn_idx_ == other.de_bruijn_idx_;
+        }
+
+        if (IsApplication() && other.IsApplication()) {
+            return (ApplicationLHS() == other.ApplicationLHS()) &&
+                   (ApplicationRHS() == other.ApplicationRHS());
+        }
+
+        return false;
+    }
+
+    bool operator!=(const Term& other) const { return !(*this == other); }
+
+    std::string ASTString(int indentation = 0) const {
+        std::ostringstream out;
+        std::string prefix = std::string(indentation, ' ');
+
+        if (IsLambda()) {
+            out << prefix << "λ " << lambda_arg_name_ << "\n";
+            out << lambda_body_->ASTString(indentation + 2);
+        } else if (IsVariable()) {
+            out << prefix << variable_name_ << "[" << de_bruijn_idx_ << "]";
+        } else if (IsApplication()) {
+            out << prefix << "<-\n";
+            out << application_lhs_->ASTString(indentation + 2) << "\n";
+            out << application_rhs_->ASTString(indentation + 2);
+        }
+
+        return out.str();
     }
 
     bool is_complete_lambda_ = false;
