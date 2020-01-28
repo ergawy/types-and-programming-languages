@@ -1,5 +1,8 @@
+#include <functional>
+#include <memory>
 #include <sstream>
 #include <stack>
+#include <stdexcept>
 #include <vector>
 
 namespace lexer {
@@ -454,6 +457,12 @@ class Parser {
                     //
                     // NOTE: Only single-character variable names are currecntly
                     // supported as free variables.
+                    if (next_token.GetText().length() != 1) {
+                        std::ostringstream error_ss;
+                        error_ss << "Unexpected token: " << next_token;
+                        throw std::invalid_argument(error_ss.str());
+                    }
+
                     de_bruijn_idx =
                         bound_variables.size() +
                         (std::tolower(next_token.GetText()[0]) - 'a');
@@ -484,9 +493,9 @@ class Parser {
 
                 --balance_parens;
             } else {
-                throw std::invalid_argument(
-                    "Unexpected token: " +
-                    (std::ostringstream() << next_token).str());
+                std::ostringstream error_ss;
+                error_ss << "Unexpected token: " << next_token;
+                throw std::invalid_argument(error_ss.str());
             }
         }
 
@@ -588,4 +597,3 @@ class Interpreter {
     bool IsValue(const Term& term) { return term.IsLambda(); }
 };
 }  // namespace interpreter
-

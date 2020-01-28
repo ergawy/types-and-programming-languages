@@ -131,8 +131,6 @@ using namespace utils::test;
 using Category = lexer::Token::Category;
 
 struct TestData {
-    // TestData(const TestData&) = delete;
-
     std::string input_program_;
     // The absense of an expected AST means that: for the test being specified,
     // a parse error is expected.
@@ -223,10 +221,10 @@ void InitData() {
     // DISABLE:
     // kData.emplace_back(TestData{
     //    "(l x. x y l y. y l z. z) x",
-    //    Application(
+    //    Term::Application(
     //        LambdaUP(
     //            "x",
-    //            Application(
+    //            Term::Application(
     //                ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
     //                LambdaUP("y", Term::Application(
     //                                  VariableUP("y", 0),
@@ -636,6 +634,114 @@ void InitData() {
                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
                    LambdaUP("y", Term::Application(VariableUP("y", 0),
                                                    VariableUP("z", 27)))))});
+
+    kData.emplace_back(TestData{
+        "l x. x y l z. z",
+        Lambda("x", Term::Application(
+                        ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                        LambdaUP("z", Term::Variable("z", 0))))});
+
+    kData.emplace_back(TestData{
+        "l x. x z l y. y",
+        Lambda("x", Term::Application(
+                        ApplicationUP(VariableUP("x", 0), VariableUP("z", 26)),
+                        LambdaUP("y", Term::Variable("y", 0))))});
+
+    kData.emplace_back(TestData{
+        "l x. x y z",
+        Lambda("x", Term::Application(
+                        ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                        VariableUP("z", 26)))});
+
+    kData.emplace_back(TestData{
+        "l x. x y z w",
+        Lambda("x", Term::Application(
+                        ApplicationUP(ApplicationUP(VariableUP("x", 0),
+                                                    VariableUP("y", 25)),
+                                      VariableUP("z", 26)),
+                        VariableUP("w", 23)))});
+
+    kData.emplace_back(TestData{
+        "l x.(l y.((x y) x))",
+        Lambda("x",
+               Lambda("y", Term::Application(ApplicationUP(VariableUP("x", 1),
+                                                           VariableUP("y", 0)),
+                                             VariableUP("x", 1))))});
+
+    kData.emplace_back(TestData{"l x.x", Lambda("x", Term::Variable("x", 0))});
+
+    kData.emplace_back(
+        TestData{"l y. (y)", Lambda("x", Term::Variable("x", 0))});
+
+    // DISABLE:
+    // kData.emplace_back(TestData{
+    //    "l y. (y) x", Lambda("x", Term::Application(VariableUP("y", 0),
+    //                                                VariableUP("x", 23)))});
+
+    kData.emplace_back(TestData{
+        "l y. x l x. y",
+        Lambda("y", Term::Application(VariableUP("x", 24),
+                                      LambdaUP("x", Term::Variable("y", 1))))});
+
+    kData.emplace_back(TestData{
+        "l y. x y", Lambda("y", Term::Application(VariableUP("x", 24),
+                                                  VariableUP("y", 0)))});
+
+    kData.emplace_back(TestData{
+        "l y. x y z",
+        Lambda("y", Term::Application(
+                        ApplicationUP(VariableUP("x", 24), VariableUP("y", 0)),
+                        VariableUP("z", 26)))});
+
+    kData.emplace_back(TestData{
+        "l y. x y z a",
+        Lambda("y", Term::Application(
+                        ApplicationUP(ApplicationUP(VariableUP("x", 24),
+                                                    VariableUP("y", 0)),
+                                      VariableUP("z", 26)),
+                        VariableUP("a", 1)))});
+
+    kData.emplace_back(TestData{"x", Term::Variable("x", 23)});
+
+    kData.emplace_back(
+        TestData{"x (l y. y)",
+                 Term::Application(VariableUP("x", 23),
+                                   LambdaUP("y", Term::Variable("y", 0)))});
+
+    kData.emplace_back(TestData{
+        "x (y z)", Term::Application(VariableUP("x", 23),
+                                     ApplicationUP(VariableUP("y", 24),
+                                                   VariableUP("z", 25)))});
+
+    kData.emplace_back(TestData{
+        "x (y) z", Term::Application(
+                       ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
+                       VariableUP("z", 25))});
+
+    kData.emplace_back(TestData{
+        "x l x. l y. x y x y",
+        Term::Application(
+            VariableUP("x", 23),
+            LambdaUP("x", Lambda("y", Term::Application(
+                                          ApplicationUP(
+                                              ApplicationUP(VariableUP("x", 1),
+                                                            VariableUP("y", 0)),
+                                              VariableUP("x", 1)),
+                                          VariableUP("y", 0)))))});
+
+    kData.emplace_back(TestData{
+        "x l y. y", Term::Application(VariableUP("x", 23),
+                                      LambdaUP("y", Term::Variable("y", 0)))});
+
+    kData.emplace_back(TestData{
+        "x y", Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
+
+    kData.emplace_back(TestData{
+        "x y z x",
+        Term::Application(ApplicationUP(ApplicationUP(VariableUP("x", 23),
+                                                      VariableUP("y", 24)),
+                                        VariableUP("z", 25)),
+                          VariableUP("x", 23))});
 }
 
 void Run() {
