@@ -742,6 +742,20 @@ void InitData() {
                                                       VariableUP("y", 24)),
                                         VariableUP("z", 25)),
                           VariableUP("x", 23))});
+
+    kData.emplace_back(TestData{"((x y)) (z"});
+    kData.emplace_back(TestData{"(l x. x l y. y a"});
+    kData.emplace_back(TestData{"(x y) x)"});
+    kData.emplace_back(TestData{"l . y"});
+    kData.emplace_back(TestData{"l x . (x))"});
+    kData.emplace_back(TestData{"l x."});
+    kData.emplace_back(TestData{"l x. ((x (y z))"});
+    kData.emplace_back(TestData{"l x. x (l y. y l z. z"});
+    kData.emplace_back(TestData{"l x. x (l y. y) (l z. z) w)"});
+    kData.emplace_back(TestData{"l x. x'"});
+    kData.emplace_back(TestData{"l x. x) (l y. y)"});
+    kData.emplace_back(TestData{"l x. xa"});
+    kData.emplace_back(TestData{"l x.l y. y x'"});
 }
 
 void Run() {
