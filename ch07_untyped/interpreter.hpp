@@ -45,6 +45,13 @@ class Lexer {
    public:
     Lexer(std::istringstream&& in) : in_(std::move(in)) {}
 
+    // TODO I think this can be significantly simplified by:
+    //
+    // 1. Adding a pre-processing step that inserts a space before and after
+    // separators (., (, and )).
+    //
+    // 2. Separating the code of reading the next token from the input character
+    // buffer from the code of managing the output token buffer.
     Token NextToken() {
         if (is_cached_token_valid) {
             is_cached_token_valid = false;
@@ -227,6 +234,10 @@ class Term {
         return true;
     }
 
+    bool IsEmpty() const {
+        return !IsLambda() && !IsVariable() && !IsApplication();
+    }
+
     Term& Combine(Term&& term) {
         if (term.IsInvalid()) {
             throw std::invalid_argument(
@@ -402,7 +413,9 @@ class Term {
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
-    if (term.IsVariable()) {
+    if (term.IsInvalid()) {
+        out << "<INVALID>";
+    } else if (term.IsVariable()) {
         out << "[" << term.variable_name_ << "=" << term.de_bruijn_idx_ << "]";
     } else if (term.IsLambda()) {
         out << "{λ " << term.lambda_arg_name_ << ". " << *term.lambda_body_
@@ -425,9 +438,10 @@ class Parser {
 
     Term ParseProgram() {
         Token next_token;
-        std::stack<Term> term_stack;
-        term_stack.emplace(Term());
+        std::vector<Term> term_stack;
+        term_stack.emplace_back(Term());
         int balance_parens = 0;
+        std::vector<int> stack_size_on_open_paren;
         // Contains a list of bound variables in order of binding. For example,
         // for a term λ x. λ y. x y, this list would eventually contains {"x" ,
         // "y"} in that order. This is used to assign de Bruijn indices/static
@@ -440,7 +454,11 @@ class Parser {
                 auto lambda_arg = ParseVariable();
                 bound_variables.push_back(lambda_arg.GetText());
                 ParseDot();
-                term_stack.emplace(Term::Lambda(lambda_arg.GetText()));
+                if (term_stack.back().IsEmpty()) {
+                    term_stack.back() = Term::Lambda(lambda_arg.GetText());
+                } else {
+                    term_stack.emplace_back(Term::Lambda(lambda_arg.GetText()));
+                }
             } else if (next_token.GetCategory() == Token::Category::VARIABLE) {
                 auto bound_variable_it =
                     std::find(std::begin(bound_variables),
@@ -468,29 +486,37 @@ class Parser {
                         (std::tolower(next_token.GetText()[0]) - 'a');
                 }
 
-                term_stack.top().Combine(
+                term_stack.back().Combine(
                     Term::Variable(next_token.GetText(), de_bruijn_idx));
             } else if (next_token.GetCategory() ==
                        Token::Category::OPEN_PAREN) {
-                term_stack.emplace(Term());
+                stack_size_on_open_paren.emplace_back(term_stack.size());
+                term_stack.emplace_back(Term());
                 ++balance_parens;
             } else if (next_token.GetCategory() ==
                        Token::Category::CLOSE_PAREN) {
                 // A prenthesized λ-abstration is equivalent to a term
                 // double parenthesized term since we push a new term on the
                 // stack for each lambda.
-                if (term_stack.top().IsLambda()) {
-                    // Mark the λ as complete so that terms to its right won't
-                    // be combined to its body.
-                    term_stack.top().is_complete_lambda_ = true;
-                    // λ's variable is no longer part of the current binding
-                    // context, therefore pop it.
-                    bound_variables.pop_back();
+                while (!term_stack.empty() &&
+                       !stack_size_on_open_paren.empty() &&
+                       term_stack.size() > stack_size_on_open_paren.back()) {
+                    if (term_stack.back().IsLambda()) {
+                        // Mark the λ as complete so that terms to its right
+                        // won't be combined to its body.
+                        term_stack.back().is_complete_lambda_ = true;
+                        // λ's variable is no longer part of the current binding
+                        // context, therefore pop it.
+                        bound_variables.pop_back();
+                    }
+
                     CombineStackTop(term_stack);
                 }
 
-                CombineStackTop(term_stack);
                 --balance_parens;
+                if (!stack_size_on_open_paren.empty()) {
+                    stack_size_on_open_paren.pop_back();
+                }
             } else {
                 std::ostringstream error_ss;
                 error_ss << "Unexpected token: " << next_token;
@@ -507,18 +533,22 @@ class Parser {
             CombineStackTop(term_stack);
         }
 
-        return std::move(term_stack.top());
+        if (term_stack.back().IsInvalid()) {
+            throw std::invalid_argument("Invalid term.");
+        }
+
+        return std::move(term_stack.back());
     }
 
-    void CombineStackTop(std::stack<Term>& term_stack) {
+    void CombineStackTop(std::vector<Term>& term_stack) {
         if (term_stack.size() < 2) {
             throw std::invalid_argument(
                 "Invalid term: probably because a ( is not matched by a )");
         }
 
-        Term top = std::move(term_stack.top());
-        term_stack.pop();
-        term_stack.top().Combine(std::move(top));
+        Term top = std::move(term_stack.back());
+        term_stack.pop_back();
+        term_stack.back().Combine(std::move(top));
     }
 
     Token ParseVariable() {
