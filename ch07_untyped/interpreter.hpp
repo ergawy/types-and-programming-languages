@@ -476,8 +476,6 @@ class Parser {
                 ++balance_parens;
             } else if (next_token.GetCategory() ==
                        Token::Category::CLOSE_PAREN) {
-                CombineStackTop(term_stack);
-
                 // A prenthesized λ-abstration is equivalent to a term
                 // double parenthesized term since we push a new term on the
                 // stack for each lambda.
@@ -491,6 +489,7 @@ class Parser {
                     CombineStackTop(term_stack);
                 }
 
+                CombineStackTop(term_stack);
                 --balance_parens;
             } else {
                 std::ostringstream error_ss;
