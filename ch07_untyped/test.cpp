@@ -15,9 +15,16 @@ void Run();
 }
 }  // namespace parser
 
+namespace interpreter {
+namespace test {
+void Run();
+}
+}  // namespace interpreter
+
 int main() {
     lexer::test::Run();
     parser::test::Run();
+    interpreter::test::Run();
 
     return 0;
 }
@@ -124,20 +131,8 @@ void Run() {
 }  // namespace test
 }  // namespace lexer
 
-namespace parser {
-namespace test {
-
-using namespace utils::test;
-using Category = lexer::Token::Category;
-
-struct TestData {
-    std::string input_program_;
-    // The absense of an expected AST means that: for the test being specified,
-    // a parse error is expected.
-    std::optional<Term> expected_ast_;
-};
-
-std::vector<TestData> kData{};
+namespace {
+using namespace parser;
 
 std::unique_ptr<Term> VariableUP(std::string name, int de_bruijn_idx) {
     return std::make_unique<Term>(Term::Variable(name, de_bruijn_idx));
@@ -156,6 +151,23 @@ Term Lambda(std::string arg_name, Term&& body) {
 std::unique_ptr<Term> LambdaUP(std::string arg_name, Term&& body) {
     return std::make_unique<Term>(Lambda(arg_name, std::move(body)));
 }
+
+}  // namespace
+
+namespace parser {
+namespace test {
+
+using namespace utils::test;
+using Category = lexer::Token::Category;
+
+struct TestData {
+    std::string input_program_;
+    // The absense of an expected AST means that: for the test being specified,
+    // a parse error is expected.
+    std::optional<Term> expected_ast_;
+};
+
+std::vector<TestData> kData{};
 
 void InitData() {
     kData.emplace_back(TestData{"x", Term::Variable("x", 23)});
@@ -203,6 +215,7 @@ void InitData() {
     kData.emplace_back(TestData{
         "(l x. x a)", Lambda("x", Term::Application(VariableUP("x", 0),
                                                     VariableUP("a", 1)))});
+
     kData.emplace_back(TestData{
         "(l x. x y l y. y l z. z)",
         Lambda(
@@ -243,6 +256,7 @@ void InitData() {
                      LambdaUP("x", Term::Variable("x", 0)),
                      LambdaUP("y", Term::Application(VariableUP("y", 0),
                                                      VariableUP("a", 1))))});
+
     kData.emplace_back(
         TestData{"(l x. x) l y. y x",
                  Term::Application(
@@ -470,6 +484,7 @@ void InitData() {
                                  LambdaUP("y", Term::Variable("y", 0))),
                    LambdaUP("z", Term::Application(VariableUP("z", 0),
                                                    VariableUP("w", 24)))))});
+
     kData.emplace_back(TestData{
         "l x. x (l y. y) z",
         Lambda("x", Term::Application(
@@ -814,3 +829,185 @@ void Run() {
 
 }  // namespace test
 }  // namespace parser
+
+namespace interpreter {
+namespace test {
+
+using namespace utils::test;
+using namespace parser;
+
+struct TestData {
+    std::string input_program_;
+    Term expected_eval_result_;
+};
+
+std::vector<TestData> kData;
+
+void InitData() {
+    kData.emplace_back(TestData{"x", Term::Variable("x", 23)});
+
+    kData.emplace_back(TestData{
+        "(x y)", Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
+
+    kData.emplace_back(TestData{
+        "x y x", Term::Application(
+                     ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
+                     VariableUP("x", 23))});
+
+    kData.emplace_back(TestData{
+        "((x y)) (z)", Term::Application(ApplicationUP(VariableUP("x", 23),
+                                                       VariableUP("y", 24)),
+                                         VariableUP("z", 25))});
+
+    kData.emplace_back(TestData{
+        "(l x. x a)", Lambda("x", Term::Application(VariableUP("x", 0),
+                                                    VariableUP("a", 1)))});
+
+    kData.emplace_back(TestData{
+        "(l x. x y l y. y l z. z)",
+        Lambda(
+            "x",
+            Term::Application(
+                ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                LambdaUP("y", Term::Application(
+                                  VariableUP("y", 0),
+                                  LambdaUP("z", Term::Variable("z", 0))))))});
+
+    kData.emplace_back(
+        TestData{"(l x. x) l y. y", Lambda("y", Term::Variable("y", 0))});
+
+    kData.emplace_back(TestData{"(l x. x) (l y. y) l z. z",
+                                Lambda("z", Term::Variable("z", 0))});
+
+    kData.emplace_back(TestData{
+        "(l x. x) l y. y l z. z",
+        Lambda("y", Term::Application(VariableUP("y", 0),
+                                      LambdaUP("z", Term::Variable("z", 0))))});
+
+    kData.emplace_back(TestData{
+        "(l x. x) l y. y a",
+        Lambda("y",
+               Term::Application(VariableUP("y", 0), VariableUP("a", 1)))});
+
+    kData.emplace_back(TestData{
+        "(l x. x) l y. y x",
+        Lambda("y",
+               Term::Application(VariableUP("y", 0), VariableUP("x", 24)))});
+
+    kData.emplace_back(TestData{
+        "(l x. x) l y. y z",
+        Lambda("y",
+               Term::Application(VariableUP("y", 0), VariableUP("z", 26)))});
+
+    // REVISIT:
+    kData.emplace_back(TestData{
+        "(l x. x) x", Term::Application(LambdaUP("x", Term::Variable("x", 0)),
+                                        VariableUP("x", 23))});
+
+    // REVISIT:
+    kData.emplace_back(TestData{
+        "(l x. x) y", Term::Application(LambdaUP("x", Term::Variable("x", 0)),
+                                        VariableUP("y", 24))});
+
+    kData.emplace_back(
+        TestData{"(x l y. y)",
+                 Term::Application(VariableUP("x", 23),
+                                   LambdaUP("y", Term::Variable("y", 0)))});
+
+    kData.emplace_back(TestData{"(x)", Term::Variable("x", 23)});
+
+    kData.emplace_back(TestData{
+        "l x . (l y.((x y) x))",
+        Lambda("x",
+               Lambda("y", Term::Application(ApplicationUP(VariableUP("x", 1),
+                                                           VariableUP("y", 0)),
+                                             VariableUP("x", 1))))});
+
+    kData.emplace_back(TestData{
+        "l x. (x y)", Lambda("x", Term::Application(VariableUP("x", 0),
+                                                    VariableUP("y", 25)))});
+
+    kData.emplace_back(TestData{
+        "l x. (x) (y) (z)",
+        Lambda("x", Term::Application(
+                        ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                        VariableUP("z", 26)))});
+
+    kData.emplace_back(
+        TestData{"x (l y. y)",
+                 Term::Application(VariableUP("x", 23),
+                                   LambdaUP("y", Term::Variable("y", 0)))});
+
+    kData.emplace_back(TestData{"(l z. l x. x) (l  y. y)",
+                                Lambda("x", Term::Variable("x", 0))});
+
+    // REVISIT:
+    kData.emplace_back(TestData{
+        "(l x. x y l y. y l z. z) x",
+        Term::Application(
+            LambdaUP(
+                "x",
+                Term::Application(
+                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                    LambdaUP("y", Term::Application(
+                                      VariableUP("y", 0),
+                                      LambdaUP("z", Term::Variable("z", 0)))))),
+            VariableUP("x", 23))});
+}
+
+void Run() {
+    InitData();
+    std::cout << color::kYellow << "[Interpreter] Running " << kData.size()
+              << " tests...\n"
+              << color::kReset;
+    int num_failed = 0;
+
+    for (const auto& test : kData) {
+        Interpreter interpreter{};
+        parser::Term actual_eval_res;
+
+        try {
+            parser::Parser parser{std::istringstream{test.input_program_}};
+            auto program = parser.ParseProgram();
+            interpreter.Interpret(program);
+            actual_eval_res = std::move(program);
+        } catch (std::exception& ex) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  Input program: " << test.input_program_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Expected evaluation result: " << color::kReset
+                      << test.expected_eval_result_ << "\n";
+
+            std::cout << color::kRed << "  Parsing failed." << color::kReset
+                      << "\n";
+
+            ++num_failed;
+            continue;
+        }
+
+        if (actual_eval_res != test.expected_eval_result_) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  Input program: " << test.input_program_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Expected evaluation result: " << color::kReset
+                      << test.expected_eval_result_ << "\n";
+
+            std::cout << color::kRed
+                      << "  Actual evaluation result: " << color::kReset
+                      << actual_eval_res << "\n";
+
+            ++num_failed;
+        }
+    }
+
+    std::cout << color::kYellow << "Results: " << color::kReset
+              << (kData.size() - num_failed) << " out of " << kData.size()
+              << " tests passed.\n";
+}
+}  // namespace test
+}  // namespace interpreter
+
