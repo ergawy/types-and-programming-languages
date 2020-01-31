@@ -623,6 +623,8 @@ class Interpreter {
         }
     }
 
-    bool IsValue(const Term& term) { return term.IsLambda(); }
+    bool IsValue(const Term& term) {
+        return term.IsLambda() || term.IsVariable();
+    }
 };
 }  // namespace interpreter

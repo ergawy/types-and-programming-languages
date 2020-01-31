@@ -739,6 +739,38 @@ void InitData() {
                                                     VariableUP("y", 25))),
                         LambdaUP("z", Term::Variable("z", 0))))});
 
+    kData.emplace_back(TestData{
+        "(l x. x) ((l x. x) (l z. (l x. x) z))",
+        Term::Application(
+            LambdaUP("x", Term::Variable("x", 0)),
+            ApplicationUP(
+                LambdaUP("x", Term::Variable("x", 0)),
+                LambdaUP("z", Term::Application(
+                                  LambdaUP("x", Term::Variable("x", 0)),
+                                  VariableUP("z", 0)))))});
+
+    // Some examples from tapl,§5.2
+    // true = l t. l f. t
+    // fals = l t. l f. f
+    // test = l b. l m. l n. b m n
+    // test true v w
+    kData.emplace_back(TestData{
+        "(l b. l m. l n. b m n) (l t. l f. t) v w",
+        Term::Application(
+            ApplicationUP(
+                ApplicationUP(
+                    LambdaUP(
+                        "b",
+                        Lambda("m", Lambda("n", Term::Application(
+                                                    ApplicationUP(
+                                                        VariableUP("b", 2),
+                                                        VariableUP("m", 1)),
+                                                    VariableUP("n", 0))))),
+                    LambdaUP("t", Lambda("f", Term::Variable("t", 1)))),
+                VariableUP("v", 21)),
+            VariableUP("w", 22))});
+
+    // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y. y a"});
     kData.emplace_back(TestData{"(x y) x)"});
@@ -846,6 +878,8 @@ std::vector<TestData> kData;
 void InitData() {
     kData.emplace_back(TestData{"x", Term::Variable("x", 23)});
 
+    kData.emplace_back(TestData{"l x. x", Lambda("x", Term::Variable("x", 0))});
+
     kData.emplace_back(TestData{
         "(x y)", Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
 
@@ -899,15 +933,9 @@ void InitData() {
         Lambda("y",
                Term::Application(VariableUP("y", 0), VariableUP("z", 26)))});
 
-    // REVISIT:
-    kData.emplace_back(TestData{
-        "(l x. x) x", Term::Application(LambdaUP("x", Term::Variable("x", 0)),
-                                        VariableUP("x", 23))});
+    kData.emplace_back(TestData{"(l x. x) x", Term::Variable("x", 23)});
 
-    // REVISIT:
-    kData.emplace_back(TestData{
-        "(l x. x) y", Term::Application(LambdaUP("x", Term::Variable("x", 0)),
-                                        VariableUP("y", 24))});
+    kData.emplace_back(TestData{"(l x. x) y", Term::Variable("y", 24)});
 
     kData.emplace_back(
         TestData{"(x l y. y)",
@@ -941,18 +969,38 @@ void InitData() {
     kData.emplace_back(TestData{"(l z. l x. x) (l  y. y)",
                                 Lambda("x", Term::Variable("x", 0))});
 
-    // REVISIT:
     kData.emplace_back(TestData{
         "(l x. x y l y. y l z. z) x",
         Term::Application(
-            LambdaUP(
-                "x",
-                Term::Application(
-                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                    LambdaUP("y", Term::Application(
-                                      VariableUP("y", 0),
-                                      LambdaUP("z", Term::Variable("z", 0)))))),
-            VariableUP("x", 23))});
+            ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
+            LambdaUP("y", Term::Application(
+                              VariableUP("y", 0),
+                              LambdaUP("z", Term::Variable("z", 0)))))});
+
+    kData.emplace_back(TestData{
+        "(l x. x) ((l x. x) (l z. (l x. x) z))",
+        Lambda("z", Term::Application(LambdaUP("x", Term::Variable("x", 0)),
+                                      VariableUP("z", 0)))});
+
+    kData.emplace_back(TestData{"(l t. l f. t) v w", Term::Variable("v", 21)});
+
+    // Some examples from tapl,§5.2
+    // true  = l t. l f. t
+    // false = l t. l f. f
+    // test  = l b. l m. l n. b m n (b is evaluates to a bool)
+    // test true v w => v
+    kData.emplace_back(TestData{"(l b. l m. l n. b m n) (l t. l f. t) v w",
+                                Term::Variable("v", 21)});
+
+    // and = l b. l c. b c false;
+    // and true true => true
+    kData.emplace_back(
+        TestData{"(l b. l c. b c l t. l f. f) (l t. l f. t) (l t. l f. t)",
+                 Lambda("t", Lambda("f", Term::Variable("t", 1)))});
+    // and true false => false
+    kData.emplace_back(
+        TestData{"(l b. l c. b c l t. l f. f) (l t. l f. t) (l t. l f. f)",
+                 Lambda("t", Lambda("f", Term::Variable("f", 0)))});
 }
 
 void Run() {
@@ -997,7 +1045,7 @@ void Run() {
                       << test.expected_eval_result_ << "\n";
 
             std::cout << color::kRed
-                      << "  Actual evaluation result: " << color::kReset
+                      << "  Actual evaluation result:   " << color::kReset
                       << actual_eval_res << "\n";
 
             ++num_failed;
