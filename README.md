@@ -15,8 +15,10 @@ Each implementation contains 3 files:
 
 Language | Directory | Status
 --- | --- | ---
-Untyped Arithmetic Expressions | ch04_arith | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests
-The Untyped Lmabda Calculus | ch07_untyped | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests
+Untyped Arithmetic Expressions | [ch04_arith](ch04_arith) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests
+The Untyped Lmabda Calculus | [ch07_untyped](ch07_untyped) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests
+Typed Arithmetic Expressions | [ch08_tyarith](ch08_tyarith) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter & Type Checker + Tests
+
 
 ### Usage
 
