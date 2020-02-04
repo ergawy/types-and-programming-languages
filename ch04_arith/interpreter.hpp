@@ -120,9 +120,9 @@ std::ostream& operator<<(std::ostream& out, Token::Category token_category) {
 }
 
 std::string Token::DebugString() const {
-    return (std::ostringstream{} << "{text: " << text
-                                 << ", category: " << category << "}")
-        .str();
+    std::ostringstream ss;
+    ss << "{text: " << text << ", category: " << category << "}";
+    return ss.str();
 }
 
 }  // namespace lexer
