@@ -346,37 +346,41 @@ namespace interpreter {
 namespace test {
 
 using namespace utils::test;
+using namespace type_checker;
 
 struct TestData {
     std::string input_program_;
-    std::string expected_eval_result_;
+    std::pair<std::string, Type> expected_eval_result_;
 };
 
 std::vector<TestData> kData{
-    TestData{"0", "0"},
-    TestData{"true", "true"},
-    TestData{"false", "false"},
-    TestData{"if false then true else 0", "0"},
-    TestData{"if false then true else false", "false"},
-    TestData{"if false then true else succ 0", "1"},
-    TestData{"if false then true else succ succ 0", "2"},
-    TestData{"if false then true else succ succ succ 0", "3"},
-    TestData{"if succ 0 then succ 0 else true", "<ERROR>"},
-    TestData{"if true then false else true", "false"},
-    TestData{"if true then succ 0 else 0", "1"},
-    TestData{"if true then succ 0 else true", "1"},
-    TestData{"if true then true else succ 0", "true"},
-    TestData{"if if true then false else true then true else false", "false"},
-    TestData{"iszero 0", "true"},
-    TestData{"iszero pred succ succ 0", "false"},
-    TestData{"pred pred 0", "0"},
-    TestData{"pred pred if true then true else false", "<ERROR>"},
-    TestData{"pred succ 0", "0"},
-    TestData{"pred succ if true then true else false", "<ERROR>"},
-    TestData{"pred succ pred 0", "0"},
-    TestData{"pred succ pred succ 0", "0"},
-    TestData{"succ if true then true else false", "<ERROR>"},
-    TestData{"succ succ true", "<ERROR>"},
+    TestData{"0", {"0", Type::Nat}},
+    TestData{"true", {"true", Type::Bool}},
+    TestData{"false", {"false", Type::Bool}},
+    TestData{"if false then true else 0", {"0", Type::Nat}},
+    TestData{"if false then true else false", {"false", Type::Bool}},
+    TestData{"if false then true else succ 0", {"1", Type::Nat}},
+    TestData{"if false then true else succ succ 0", {"2", Type::Nat}},
+    TestData{"if false then true else succ succ succ 0", {"3", Type::Nat}},
+    TestData{"if succ 0 then succ 0 else true", {"<ERROR>", Type::IllTyped}},
+    TestData{"if true then false else true", {"false", Type::Bool}},
+    TestData{"if true then succ 0 else 0", {"1", Type::Nat}},
+    TestData{"if true then succ 0 else true", {"1", Type::Nat}},
+    TestData{"if true then true else succ 0", {"true", Type::Bool}},
+    TestData{"if if true then false else true then true else false",
+             {"false", Type::Bool}},
+    TestData{"iszero 0", {"true", Type::Bool}},
+    TestData{"iszero pred succ succ 0", {"false", Type::Bool}},
+    TestData{"pred pred 0", {"0", Type::Nat}},
+    TestData{"pred pred if true then true else false",
+             {"<ERROR>", Type::IllTyped}},
+    TestData{"pred succ 0", {"0", Type::Nat}},
+    TestData{"pred succ if true then true else false",
+             {"<ERROR>", Type::IllTyped}},
+    TestData{"pred succ pred 0", {"0", Type::Nat}},
+    TestData{"pred succ pred succ 0", {"0", Type::Nat}},
+    TestData{"succ if true then true else false", {"<ERROR>", Type::IllTyped}},
+    TestData{"succ succ true", {"<ERROR>", Type::IllTyped}},
 };
 
 void Run() {
@@ -400,7 +404,8 @@ void Run() {
 
             std::cout << color::kGreen
                       << "  Expected evaluation result: " << color::kReset
-                      << test.expected_eval_result_ << "\n";
+                      << test.expected_eval_result_.first << ": "
+                      << test.expected_eval_result_.second << "\n";
 
             std::cout << color::kRed << "  Parsing failed." << color::kReset
                       << "\n";
@@ -409,18 +414,21 @@ void Run() {
             continue;
         }
 
-        if (actual_eval_res.first != test.expected_eval_result_) {
+        if (actual_eval_res.first != test.expected_eval_result_.first ||
+            actual_eval_res.second != test.expected_eval_result_.second) {
             std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
 
             std::cout << "  Input program: " << test.input_program_ << "\n";
 
             std::cout << color::kGreen
                       << "  Expected evaluation result: " << color::kReset
-                      << test.expected_eval_result_ << "\n";
+                      << test.expected_eval_result_.first << ": "
+                      << test.expected_eval_result_.second << "\n";
 
             std::cout << color::kRed
                       << "  Actual evaluation result: " << color::kReset
-                      << actual_eval_res.first << "\n";
+                      << actual_eval_res.first << ": " << actual_eval_res.second
+                      << "\n";
 
             ++num_failed;
         }
