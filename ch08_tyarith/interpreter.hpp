@@ -1,3 +1,5 @@
+#pragma once
+
 #include <iostream>
 #include <sstream>
 #include <utility>
@@ -20,6 +22,14 @@ struct Token {
         MARKER_ERROR,
         MARKER_END
     };
+
+    bool operator==(const Token& other) const {
+        return category == other.category && text == other.text;
+    }
+
+    bool operator!=(const Token& other) const { return !(*this == other); }
+
+    std::string DebugString() const;
 
     Category category;
     std::string text;
@@ -109,6 +119,13 @@ std::ostream& operator<<(std::ostream& out, Token::Category token_category) {
 
     return out;
 }
+
+std::string Token::DebugString() const {
+    std::ostringstream ss;
+    ss << "{text: " << text << ", category: " << category << "}";
+    return ss.str();
+}
+
 }  // namespace lexer
 
 namespace parser {
@@ -119,18 +136,8 @@ class Term {
                                     const Term& token_category);
 
    public:
-    enum class Flag {
-        INVALID = 1,
-        VALUE = 2,
-        NUMERIC_VALUE = 6, /* A NUMERIC_VALUE is also a VALUE. */
-        OTHER = 8
-    };
-
-    Term(Cat first_token_category, unsigned int flags,
-         std::vector<Term> sub_terms)
-        : first_token_category_(first_token_category),
-          flags_(flags),
-          sub_terms_(sub_terms) {}
+    Term(Cat first_token_category, std::vector<Term> sub_terms = {})
+        : first_token_category_(first_token_category), sub_terms_(sub_terms) {}
 
     Term() = default;
     Term(const Term&) = default;
@@ -138,42 +145,88 @@ class Term {
     Term& operator=(const Term&) = default;
     Term& operator=(Term&&) = default;
 
-    unsigned int Flags() const { return flags_; }
-    Cat Category() { return first_token_category_; }
+    Cat Category() const { return first_token_category_; }
     Term& SubTerm(int i) { return sub_terms_[i]; }
 
+    std::string ASTString(int indentation = 0) const {
+        std::ostringstream out;
+        std::string prefix = std::string(indentation, ' ');
+
+        switch (Category()) {
+            case Cat::CONSTANT_ZERO:
+            case Cat::CONSTANT_TRUE:
+            case Cat::CONSTANT_FALSE:
+                out << prefix << Category();
+                break;
+
+            case Cat::KEYWORD_IF:
+                out << prefix << Category() << "\n";
+                out << sub_terms_[0].ASTString(indentation + 2) << "\n";
+                out << prefix << Cat::KEYWORD_ELSE << "\n";
+                out << sub_terms_[1].ASTString(indentation + 2) << "\n";
+                out << prefix << Cat::KEYWORD_THEN << "\n";
+                out << sub_terms_[2].ASTString(indentation + 2);
+                break;
+
+            case Cat::KEYWORD_SUCC:
+            case Cat::KEYWORD_PRED:
+            case Cat::KEYWORD_ISZERO:
+                out << prefix << Category() << "\n";
+                out << sub_terms_[0].ASTString(indentation + 2);
+                break;
+
+            default:
+                break;
+        }
+
+        return out.str();
+    }
+
+    bool operator==(const Term& other) const {
+        if (Category() != other.Category()) {
+            return false;
+        }
+
+        bool res = true;
+
+        switch (Category()) {
+            case Cat::CONSTANT_ZERO:
+            case Cat::CONSTANT_TRUE:
+            case Cat::CONSTANT_FALSE:
+                break;
+
+            case Cat::KEYWORD_IF:
+                for (int i = 0; i < 3; ++i) {
+                    res = res && (sub_terms_[i] == other.sub_terms_[i]);
+
+                    if (!res) {
+                        break;
+                    }
+                }
+
+                break;
+
+            case Cat::KEYWORD_SUCC:
+            case Cat::KEYWORD_PRED:
+            case Cat::KEYWORD_ISZERO:
+                res = res && (sub_terms_[0] == other.sub_terms_[0]);
+
+                break;
+
+            default:
+                break;
+        }
+
+        return res;
+    }
+
+    bool operator!=(const Term& other) const { return !(*this == other); }
+
    private:
-    unsigned int flags_ = static_cast<unsigned int>(Flag::INVALID);
     // Category of the first token in a term speicifies the type of the term.
     Cat first_token_category_;
     std::vector<Term> sub_terms_;
 };
-
-std::ostream& operator<<(std::ostream& out, const Term::Flag& flag) {
-    using Flag = Term::Flag;
-    switch (flag) {
-        case Flag::INVALID:
-            out << "INAVLID";
-            break;
-
-        case Flag::VALUE:
-            out << "VALUE";
-            break;
-
-        case Flag::NUMERIC_VALUE:
-            out << "NUMERIC_VALUE";
-            break;
-
-        case Flag::OTHER:
-            out << "OTHER";
-            break;
-
-        default:
-            out << "<UNKNOWN_TERM_FLAG>";
-    }
-
-    return out;
-}
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
     using Category = lexer::Token::Category;
@@ -207,27 +260,23 @@ class Parser {
         return program;
     }
 
+   private:
     Term NextTerm() {
         using Category = lexer::Token::Category;
         auto token = lexer_.NextToken();
 
-        unsigned int flags = 0;
         std::vector<Term> sub_terms;
 
         switch (token.category) {
                 // Possible terms:
             case Category::CONSTANT_TRUE:
             case Category::CONSTANT_FALSE:
-                flags = static_cast<unsigned int>(Term::Flag::VALUE);
                 break;
 
             case Category::CONSTANT_ZERO:
-                flags = static_cast<unsigned int>(Term::Flag::NUMERIC_VALUE);
                 break;
 
             case Category::KEYWORD_IF: {
-                flags = static_cast<unsigned int>(Term::Flag::OTHER);
-
                 // Add condition sub-term.
                 sub_terms.emplace_back(NextTerm());
 
@@ -252,30 +301,12 @@ class Parser {
 
             case Category::KEYWORD_SUCC: {
                 auto sub_term = NextTerm();
-
-                if (sub_term.Flags() &
-                    static_cast<unsigned int>(Term::Flag::INVALID)) {
-                    throw std::invalid_argument(
-                        "Error: invalid sub-term start.");
-                }
-
                 sub_terms.emplace_back(sub_term);
-                // Propagate the sub-term's flags (e.g. if the sub-term is a
-                // numeric value then this term is a numeric value as well).
-                flags = sub_terms[0].Flags();
             } break;
 
             case Category::KEYWORD_PRED:
             case Category::KEYWORD_ISZERO: {
                 auto sub_term = NextTerm();
-
-                if (sub_term.Flags() &
-                    static_cast<unsigned int>(Term::Flag::INVALID)) {
-                    throw std::invalid_argument(
-                        "Error: invalid sub-term start.");
-                }
-
-                flags = static_cast<unsigned int>(Term::Flag::OTHER);
                 sub_terms.emplace_back(sub_term);
             } break;
 
@@ -295,7 +326,7 @@ class Parser {
                                             token.text + ".");
         }
 
-        return Term(token.category, flags, sub_terms);
+        return Term(token.category, sub_terms);
     }
 
    private:
@@ -387,10 +418,11 @@ class Interpreter {
 
         return {
             AsString(IsValue(res) ? res
-                                  : Term(Token::Category::MARKER_ERROR, 0, {})),
+                                  : Term(Token::Category::MARKER_ERROR, {})),
             res_type};
     }
 
+   private:
     std::string AsString(Term value) {
         std::ostringstream ss;
         ss << value;
@@ -464,7 +496,7 @@ class Interpreter {
     Term Eval1Pred(Term term) {
         switch (term.SubTerm(0).Category()) {
             case Token::Category::CONSTANT_ZERO: {
-                return Term(Token::Category::CONSTANT_ZERO, 0, {});
+                return Term(Token::Category::CONSTANT_ZERO);
             }
 
             case Token::Category::KEYWORD_SUCC: {
@@ -485,12 +517,12 @@ class Interpreter {
     Term Eval1IsZero(Term term) {
         switch (term.SubTerm(0).Category()) {
             case Token::Category::CONSTANT_ZERO: {
-                return Term(Token::Category::CONSTANT_TRUE, 0, {});
+                return Term(Token::Category::CONSTANT_TRUE);
             }
 
             case Token::Category::KEYWORD_SUCC: {
                 if (IsNumericValue(term.SubTerm(0))) {
-                    return Term(Token::Category::CONSTANT_FALSE, 0, {});
+                    return Term(Token::Category::CONSTANT_FALSE);
                 } else {
                     term.SubTerm(0) = Eval1(term.SubTerm(0));
                     return term;
@@ -516,24 +548,3 @@ class Interpreter {
     }
 };
 }  // namespace interpreter
-
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr
-            << "Error: expected input program as a command line argument.\n";
-        return 1;
-    }
-
-    parser::Parser parser{std::istringstream{argv[1]}};
-    type_checker::TypeChecker checker;
-    auto program = parser.ParseProgram();
-    std::cout << "   " << program << ": " << checker.TypeOf(program) << "\n";
-
-    // This is a Curry-style interperter. It trys to evaluate terms even those
-    // that are ill-typed (ref: tapl,§9.6).
-    interpreter::Interpreter interpreter;
-    auto res = interpreter.Interpret(program);
-    std::cout << "=> " << res.first << ": " << res.second << "\n";
-
-    return 0;
-}
