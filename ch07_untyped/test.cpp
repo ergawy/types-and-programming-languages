@@ -1005,6 +1005,10 @@ void InitData() {
     kData.emplace_back(
         TestData{"(l x. x x) y",
                  Term::Application(VariableUP("y", 24), VariableUP("y", 24))});
+
+    kData.emplace_back(
+        TestData{"(l x. (l z. x z) x) y",
+                 Term::Application(VariableUP("y", 24), VariableUP("y", 24))});
 }
 
 void Run() {
