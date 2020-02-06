@@ -1001,6 +1001,14 @@ void InitData() {
     kData.emplace_back(
         TestData{"(l b. l c. b c l t. l f. f) (l t. l f. t) (l t. l f. f)",
                  Lambda("t", Lambda("f", Term::Variable("f", 0)))});
+
+    kData.emplace_back(
+        TestData{"(l x. x x) y",
+                 Term::Application(VariableUP("y", 24), VariableUP("y", 24))});
+
+    kData.emplace_back(
+        TestData{"(l x. (l z. x z) x) y",
+                 Term::Application(VariableUP("y", 24), VariableUP("y", 24))});
 }
 
 void Run() {
