@@ -321,8 +321,9 @@ class Term {
                 if (term.de_bruijn_idx_ == variable + binding_context_size) {
                     // Shift sub up by binding_context_size distance since sub
                     // is now substituted in binding_context_size deep context.
-                    sub.Shift(binding_context_size);
-                    std::swap(term, sub);
+                    auto clone = sub.Clone();
+                    clone.Shift(binding_context_size);
+                    std::swap(term, clone);
                 }
             } else if (term.IsLambda()) {
                 walk(binding_context_size + 1, *term.lambda_body_);
@@ -397,6 +398,27 @@ class Term {
     }
 
     bool is_complete_lambda_ = false;
+
+    Term Clone() const {
+        if (IsInvalid()) {
+            throw std::length_error("Trying to clone an invalid term.");
+        }
+
+        if (IsLambda()) {
+            return std::move(
+                Lambda(lambda_arg_name_).Combine(lambda_body_->Clone()));
+        } else if (IsVariable()) {
+            return Variable(variable_name_, de_bruijn_idx_);
+        } else if (IsApplication()) {
+            return Application(
+                std::make_unique<Term>(application_lhs_->Clone()),
+                std::make_unique<Term>(application_rhs_->Clone()));
+        }
+
+        std::ostringstream error_ss;
+        error_ss << "Couldn't clone term: " << *this;
+        throw std::length_error(error_ss.str());
+    }
 
    private:
     bool is_lambda_ = false;
@@ -598,7 +620,7 @@ class Interpreter {
     void Eval1(Term& term) {
         auto term_subst_top = [](Term& s, Term& t) {
             // Adjust the free variables in s by increasing their static
-            // distances by 1. That's because s will now be embedded one lever
+            // distances by 1. That's because s will now be embedded one level
             // deeper in t (i.e. t's bound variable will be replaced by s).
             s.Shift(1);
             t.Substitute(0, s);
