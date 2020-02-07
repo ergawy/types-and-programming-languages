@@ -61,13 +61,6 @@ class Lexer {
         token_strings_ =
             std::vector<std::string>(std::istream_iterator<std::string>{iss},
                                      std::istream_iterator<std::string>());
-        // Token token;
-        // while ((token = NextToken()).GetCategory() !=
-        //       Token::Category::MARKER_END) {
-        //    std::cout << token << " ";
-        //}
-
-        // std::cout << "\n";
     }
 
     Token NextToken() {

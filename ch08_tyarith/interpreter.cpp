@@ -14,8 +14,6 @@ int main(int argc, char* argv[]) {
     auto program = parser.ParseProgram();
     std::cout << "   " << program << ": " << checker.TypeOf(program) << "\n";
 
-    // This is a Curry-style interperter. It trys to evaluate terms even those
-    // that are ill-typed (ref: tapl,§9.6).
     interpreter::Interpreter interpreter;
     auto res = interpreter.Interpret(program);
     std::cout << "=> " << res.first << ": " << res.second << "\n";

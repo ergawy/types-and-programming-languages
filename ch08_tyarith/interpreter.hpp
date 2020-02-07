@@ -413,6 +413,8 @@ using parser::Term;
 class Interpreter {
    public:
     std::pair<std::string, type_checker::Type> Interpret(Term program) {
+        // This is a Curry-style interperter. It trys to evaluate terms even
+        // those that are ill-typed (ref: tapl,§9.6).
         Term res = Eval(program);
         type_checker::Type res_type = type_checker::TypeChecker().TypeOf(res);
 
