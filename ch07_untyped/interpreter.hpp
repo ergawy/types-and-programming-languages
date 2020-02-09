@@ -218,6 +218,8 @@ class Term {
 
     bool IsLambda() const { return is_lambda_; }
 
+    void MarkLambdaAsComplete() { is_complete_lambda_ = true; }
+
     bool IsVariable() const { return is_variable_; }
 
     bool IsApplication() const { return is_application_; }
@@ -246,6 +248,9 @@ class Term {
 
         if (IsLambda()) {
             if (lambda_body_) {
+                // If the lambda body was completely parsed, then combining this
+                // term and the argument term means applying this lambda to the
+                // argument.
                 if (is_complete_lambda_) {
                     *this =
                         Application(std::make_unique<Term>(std::move(*this)),
@@ -397,11 +402,9 @@ class Term {
         return out.str();
     }
 
-    bool is_complete_lambda_ = false;
-
     Term Clone() const {
         if (IsInvalid()) {
-            throw std::length_error("Trying to clone an invalid term.");
+            throw std::logic_error("Trying to clone an invalid term.");
         }
 
         if (IsLambda()) {
@@ -417,13 +420,15 @@ class Term {
 
         std::ostringstream error_ss;
         error_ss << "Couldn't clone term: " << *this;
-        throw std::length_error(error_ss.str());
+        throw std::logic_error(error_ss.str());
     }
 
    private:
     bool is_lambda_ = false;
     std::string lambda_arg_name_ = "";
     std::unique_ptr<Term> lambda_body_{};
+    // Marks whether parsing for the body of the lambda term is finished or not.
+    bool is_complete_lambda_ = false;
 
     bool is_variable_ = false;
     std::string variable_name_ = "";
@@ -463,6 +468,10 @@ class Parser {
         std::vector<Term> term_stack;
         term_stack.emplace_back(Term());
         int balance_parens = 0;
+        // For each '(', records the size of term_stack when the '(' was parsed.
+        // This is used later when the corresponding ')' is parsed to know how
+        // many Terms from term_stack should be popped (i.e. their parsing is
+        // know to be complete).
         std::vector<int> stack_size_on_open_paren;
         // Contains a list of bound variables in order of binding. For example,
         // for a term λ x. λ y. x y, this list would eventually contains {"x" ,
@@ -476,9 +485,14 @@ class Parser {
                 auto lambda_arg = ParseVariable();
                 bound_variables.push_back(lambda_arg.GetText());
                 ParseDot();
+
+                // If the current stack top is empty, use its slot for the
+                // lambda.
                 if (term_stack.back().IsEmpty()) {
                     term_stack.back() = Term::Lambda(lambda_arg.GetText());
                 } else {
+                    // Else, push a new term on the stack to start building the
+                    // lambda term.
                     term_stack.emplace_back(Term::Lambda(lambda_arg.GetText()));
                 }
             } else if (next_token.GetCategory() == Token::Category::VARIABLE) {
@@ -517,16 +531,13 @@ class Parser {
                 ++balance_parens;
             } else if (next_token.GetCategory() ==
                        Token::Category::CLOSE_PAREN) {
-                // A prenthesized λ-abstration is equivalent to a term
-                // double parenthesized term since we push a new term on the
-                // stack for each lambda.
                 while (!term_stack.empty() &&
                        !stack_size_on_open_paren.empty() &&
                        term_stack.size() > stack_size_on_open_paren.back()) {
                     if (term_stack.back().IsLambda()) {
                         // Mark the λ as complete so that terms to its right
                         // won't be combined to its body.
-                        term_stack.back().is_complete_lambda_ = true;
+                        term_stack.back().MarkLambdaAsComplete();
                         // λ's variable is no longer part of the current binding
                         // context, therefore pop it.
                         bound_variables.pop_back();
@@ -536,6 +547,7 @@ class Parser {
                 }
 
                 --balance_parens;
+
                 if (!stack_size_on_open_paren.empty()) {
                     stack_size_on_open_paren.pop_back();
                 }
@@ -587,14 +599,6 @@ class Parser {
         return (token.GetCategory() == Token::Category::LAMBDA_DOT)
                    ? token
                    : throw std::logic_error("Expected to parse a dot.");
-    }
-
-    Token ParseCloseParen() {
-        auto token = lexer_.NextToken();
-
-        return (token.GetCategory() == Token::Category::CLOSE_PAREN)
-                   ? token
-                   : throw std::logic_error("Expected to parse a ')'.");
     }
 
    private:
