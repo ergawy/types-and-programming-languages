@@ -10,7 +10,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    lexer::Lexer lexer{std::istringstream{argv[1]}};
+    parser::Parser parser{std::istringstream{argv[1]}};
+    auto program = parser.ParseProgram();
+
+    std::cout << "   " << program << "\n";
 
     return 0;
 }
