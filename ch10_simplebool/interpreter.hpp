@@ -1,7 +1,9 @@
 #pragma once
 
+#include <functional>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <vector>
 
@@ -256,6 +258,17 @@ class Type {
                                   std::make_unique<Type>(rhs_->Clone()));
     }
 
+    bool operator==(const Type& other) const {
+        if (simple_bool_) {
+            return other.simple_bool_;
+        }
+
+        return lhs_ && rhs_ && other.lhs_ && other.rhs_ &&
+               (*lhs_ == *other.lhs_) && (*rhs_ == *other.rhs_);
+    }
+
+    bool operator!=(const Type& other) const { return !(*this == other); }
+
    private:
     bool simple_bool_ = false;
 
@@ -267,8 +280,9 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
     if (type.simple_bool_) {
         out << lexer::kKeywordBool;
     } else {
-        out << "(" << *type.lhs_ << lexer::Token(lexer::Token::Category::ARROW)
-            << *type.rhs_ << ")";
+        out << "(" << *type.lhs_ << " "
+            << lexer::Token(lexer::Token::Category::ARROW) << " " << *type.rhs_
+            << ")";
     }
 
     return out;
@@ -450,6 +464,14 @@ class Term {
         return *lambda_body_;
     }
 
+    Type& LambdaArgType() const {
+        if (!IsLambda()) {
+            throw std::invalid_argument("Invalid Lambda term.");
+        }
+
+        return *lambda_arg_type_;
+    }
+
     Term& ApplicationLHS() const {
         if (!IsApplication()) {
             throw std::invalid_argument("Invalide application term.");
@@ -468,7 +490,8 @@ class Term {
 
     bool operator==(const Term& other) const {
         if (IsLambda() && other.IsLambda()) {
-            return LambdaBody() == other.LambdaBody();
+            return LambdaArgType() == other.LambdaArgType() &&
+                   LambdaBody() == other.LambdaBody();
         }
 
         if (IsVariable() && other.IsVariable()) {
@@ -490,7 +513,8 @@ class Term {
         std::string prefix = std::string(indentation, ' ');
 
         if (IsLambda()) {
-            out << prefix << "λ " << lambda_arg_name_ << "\n";
+            out << prefix << "λ " << lambda_arg_name_ << ":"
+                << *lambda_arg_type_ << "\n";
             out << lambda_body_->ASTString(indentation + 2);
         } else if (IsVariable()) {
             out << prefix << variable_name_ << "[" << de_bruijn_idx_ << "]";

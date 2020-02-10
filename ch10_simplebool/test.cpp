@@ -160,6 +160,16 @@ std::unique_ptr<Term> LambdaUP(std::string arg_name, Type&& type, Term&& body) {
         Lambda(arg_name, std::move(type), std::move(body)));
 }
 
+std::unique_ptr<Type> SimpleBoolUP() {
+    return std::make_unique<Type>(Type::SimpleBool());
+}
+
+std::unique_ptr<Type> FunctionTypeUP(std::unique_ptr<Type> lhs,
+                                     std::unique_ptr<Type> rhs) {
+    return std::make_unique<Type>(
+        Type::FunctionType(std::move(lhs), std::move(rhs)));
+}
+
 }  // namespace
 
 namespace parser {
@@ -880,6 +890,46 @@ void InitData() {
                 VariableUP("v", 21)),
             VariableUP("w", 22))});
 
+    // Test parsing types:
+    kData.emplace_back(
+        TestData{"l x:Bool->Bool. x",
+                 Lambda("x", Type::FunctionType(SimpleBoolUP(), SimpleBoolUP()),
+                        Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:Bool->Bool->Bool. x",
+        Lambda(
+            "x",
+            Type::FunctionType(SimpleBoolUP(),
+                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP())),
+            Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:(Bool->Bool)->Bool. x",
+        Lambda(
+            "x",
+            Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
+                               SimpleBoolUP()),
+            Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:(Bool->Bool)->Bool->Bool. x",
+        Lambda(
+            "x",
+            Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
+                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP())),
+            Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
+        Lambda(
+            "x",
+            Type::FunctionType(
+                FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
+                FunctionTypeUP(SimpleBoolUP(),
+                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()))),
+            Term::Variable("x", 0))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -894,6 +944,8 @@ void InitData() {
     kData.emplace_back(TestData{"l x. x) (l y:Bool. y)"});
     kData.emplace_back(TestData{"l x. xa"});
     kData.emplace_back(TestData{"l x.l y:Bool. y x'"});
+    kData.emplace_back(TestData{"l x:Bool->. x"});
+    kData.emplace_back(TestData{"l x:Int->. x"});
 }
 
 void Run() {
