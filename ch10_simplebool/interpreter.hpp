@@ -465,6 +465,8 @@ class Term {
                     if_else_ = std::make_unique<Term>(std::move(term));
                 }
             }
+        } else if (IsTrue() || IsFalse()) {
+            throw std::invalid_argument("Trying to combine with a constant.");
         } else {
             *this = std::move(term);
         }

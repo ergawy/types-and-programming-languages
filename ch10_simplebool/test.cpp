@@ -932,6 +932,10 @@ void InitData() {
                                FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP())),
             Term::Variable("x", 0))});
 
+    kData.emplace_back(TestData{"true", Term::True()});
+
+    kData.emplace_back(TestData{"false", Term::False()});
+
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
         Lambda(
