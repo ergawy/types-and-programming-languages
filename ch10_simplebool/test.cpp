@@ -170,6 +170,18 @@ std::unique_ptr<Type> FunctionTypeUP(std::unique_ptr<Type> lhs,
         Type::FunctionType(std::move(lhs), std::move(rhs)));
 }
 
+Term If(Term&& condition, Term&& then_part, Term&& else_part) {
+    auto term = Term::If();
+    term.Combine(std::move(condition));
+    term.MarkIfConditionAsComplete();
+    term.Combine(std::move(then_part));
+    term.MarkIfThenAsComplete();
+    term.Combine(std::move(else_part));
+    term.MarkIfElseAsComplete();
+
+    return term;
+}
+
 }  // namespace
 
 namespace parser {
@@ -930,6 +942,17 @@ void InitData() {
                                FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()))),
             Term::Variable("x", 0))});
 
+    kData.emplace_back(TestData{"if true then true else false",
+                                If(Term::True(), Term::True(), Term::False())});
+
+    kData.emplace_back(TestData{
+        "if (if true then true else false) then (l y:Bool->Bool. y) "
+        "else (l x:Bool. false)",
+        If(If(Term::True(), Term::True(), Term::False()),
+           Lambda("y", Type::FunctionType(SimpleBoolUP(), SimpleBoolUP()),
+                  Term::Variable("y", 0)),
+           Lambda("x", Type::SimpleBool(), Term::False()))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -946,6 +969,9 @@ void InitData() {
     kData.emplace_back(TestData{"l x.l y:Bool. y x'"});
     kData.emplace_back(TestData{"l x:Bool->. x"});
     kData.emplace_back(TestData{"l x:Int->. x"});
+    kData.emplace_back(TestData{"if true"});
+    kData.emplace_back(TestData{"if true then true"});
+    kData.emplace_back(TestData{"if true then true else"});
 }
 
 void Run() {

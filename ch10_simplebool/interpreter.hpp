@@ -5,6 +5,7 @@
 #include <iterator>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 namespace lexer {
@@ -320,6 +321,27 @@ class Term {
         return result;
     }
 
+    static Term If() {
+        Term result;
+        result.is_if_ = true;
+
+        return result;
+    }
+
+    static Term True() {
+        Term result;
+        result.is_true_ = true;
+
+        return result;
+    }
+
+    static Term False() {
+        Term result;
+        result.is_false_ = true;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -338,6 +360,18 @@ class Term {
 
     bool IsApplication() const { return is_application_; }
 
+    bool IsIf() const { return is_if_; }
+
+    bool IsTrue() const { return is_true_; }
+
+    bool IsFalse() const { return is_false_; }
+
+    void MarkIfConditionAsComplete() { is_complete_if_condition_ = true; }
+
+    void MarkIfThenAsComplete() { is_complete_if_then_ = true; }
+
+    void MarkIfElseAsComplete() { is_complete_if_else_ = true; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -346,13 +380,17 @@ class Term {
             return variable_name_.empty();
         } else if (IsApplication()) {
             return !application_lhs_ || !application_rhs_;
+        } else if (IsIf()) {
+            return !if_condition_ || !if_then_ || !if_else_;
+        } else if (IsTrue() || IsFalse()) {
+            return false;
         }
 
         return true;
     }
 
     bool IsEmpty() const {
-        return !IsLambda() && !IsVariable() && !IsApplication();
+        return !IsLambda() && !IsVariable() && !IsApplication() && !IsIf();
     }
 
     Term& Combine(Term&& term) {
@@ -390,6 +428,43 @@ class Term {
         } else if (IsApplication()) {
             *this = Application(std::make_unique<Term>(std::move(*this)),
                                 std::make_unique<Term>(std::move(term)));
+        } else if (IsIf()) {
+            if (!is_complete_if_condition_) {
+                if (if_condition_) {
+                    if_condition_->Combine(std::move(term));
+                } else {
+                    if_condition_ = std::make_unique<Term>(std::move(term));
+                }
+            } else if (!is_complete_if_then_) {
+                if (if_then_) {
+                    if_then_->Combine(std::move(term));
+                } else {
+                    if_then_ = std::make_unique<Term>(std::move(term));
+                }
+            } else {
+                if (if_else_) {
+                    // If the lambda body was completely parsed, then combining
+                    // this term and the argument term means applying this
+                    // lambda to the argument.
+                    if (is_complete_if_else_) {
+                        *this = Application(
+                            std::make_unique<Term>(std::move(*this)),
+                            std::make_unique<Term>(std::move(term)));
+
+                        is_if_ = false;
+                        if_condition_ = nullptr;
+                        if_then_ = nullptr;
+                        if_else_ = nullptr;
+                        is_complete_if_condition_ = false;
+                        is_complete_if_then_ = false;
+                        is_complete_if_else_ = false;
+                    } else {
+                        if_else_->Combine(std::move(term));
+                    }
+                } else {
+                    if_else_ = std::make_unique<Term>(std::move(term));
+                }
+            }
         } else {
             *this = std::move(term);
         }
@@ -482,10 +557,34 @@ class Term {
 
     Term& ApplicationRHS() const {
         if (!IsApplication()) {
-            throw std::invalid_argument("Invalide application term.");
+            throw std::invalid_argument("Invalid application term.");
         }
 
         return *application_rhs_;
+    }
+
+    Term& IfCondition() const {
+        if (!IsIf()) {
+            throw std::invalid_argument("Invalid if term.");
+        }
+
+        return *if_condition_;
+    }
+
+    Term& IfThen() const {
+        if (!IsIf()) {
+            throw std::invalid_argument("Invalid if term.");
+        }
+
+        return *if_then_;
+    }
+
+    Term& IfElse() const {
+        if (!IsIf()) {
+            throw std::invalid_argument("Invalid if term.");
+        }
+
+        return *if_else_;
     }
 
     bool operator==(const Term& other) const {
@@ -503,6 +602,19 @@ class Term {
                    (ApplicationRHS() == other.ApplicationRHS());
         }
 
+        if (IsIf() && other.IsIf()) {
+            return (IfCondition() == other.IfCondition()) &&
+                   (IfThen() == other.IfThen()) && (IfElse() == other.IfElse());
+        }
+
+        if (IsTrue() && other.IsTrue()) {
+            return true;
+        }
+
+        if (IsFalse() && other.IsFalse()) {
+            return true;
+        }
+
         return false;
     }
 
@@ -510,7 +622,7 @@ class Term {
 
     std::string ASTString(int indentation = 0) const {
         std::ostringstream out;
-        std::string prefix = std::string(indentation, ' ');
+        std::string prefix = std::string(indentation, '-');
 
         if (IsLambda()) {
             out << prefix << "λ " << lambda_arg_name_ << ":"
@@ -522,6 +634,17 @@ class Term {
             out << prefix << "<-\n";
             out << application_lhs_->ASTString(indentation + 2) << "\n";
             out << application_rhs_->ASTString(indentation + 2);
+        } else if (IsIf()) {
+            out << prefix << "if\n";
+            out << if_condition_->ASTString(indentation + 2) << "\n";
+            out << prefix << "then\n";
+            out << if_then_->ASTString(indentation + 2) << "\n";
+            out << prefix << "else\n";
+            out << if_else_->ASTString(indentation + 2);
+        } else if (IsTrue()) {
+            out << prefix << "true";
+        } else if (IsFalse()) {
+            out << prefix << "false";
         }
 
         return out.str();
@@ -565,6 +688,18 @@ class Term {
     bool is_application_ = false;
     std::unique_ptr<Term> application_lhs_{};
     std::unique_ptr<Term> application_rhs_{};
+
+    bool is_if_ = false;
+    std::unique_ptr<Term> if_condition_{};
+    std::unique_ptr<Term> if_then_{};
+    std::unique_ptr<Term> if_else_{};
+    bool is_complete_if_condition_ = false;
+    bool is_complete_if_then_ = false;
+    bool is_complete_if_else_ = false;
+
+    bool is_true_ = false;
+
+    bool is_false_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -578,6 +713,13 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsApplication()) {
         out << "(" << *term.application_lhs_ << " <- " << *term.application_rhs_
             << ")";
+    } else if (term.IsIf()) {
+        out << "if (" << *term.if_condition_ << ") then (" << *term.if_then_
+            << ") else (" << *term.if_else_ << ")";
+    } else if (term.IsTrue()) {
+        out << "true";
+    } else if (term.IsFalse()) {
+        out << "false";
     } else {
         out << "<ERROR>";
     }
@@ -613,7 +755,6 @@ class Parser {
                 auto lambda_arg = ParseLambdaArg();
                 auto lambda_arg_name = lambda_arg.first;
                 bound_variables.push_back(lambda_arg_name);
-                // ParseDot();
 
                 // If the current stack top is empty, use its slot for the
                 // lambda.
@@ -658,6 +799,33 @@ class Parser {
                 term_stack.back().Combine(
                     Term::Variable(next_token.GetText(), de_bruijn_idx));
             } else if (next_token.GetCategory() ==
+                       Token::Category::KEYWORD_IF) {
+                // If the current stack top is empty, use its slot for the
+                // if condition.
+                if (term_stack.back().IsEmpty()) {
+                    term_stack.back() = Term::If();
+                } else {
+                    // Else, push a new term on the stack to start building the
+                    // if condition.
+                    term_stack.emplace_back(Term::If());
+                }
+
+            } else if (next_token.GetCategory() ==
+                       Token::Category::KEYWORD_THEN) {
+                // TODO then and else should be treated as parens, I guess.
+                if (!term_stack.back().IsIf()) {
+                    throw std::invalid_argument("Unexpected 'then'");
+                }
+
+                term_stack.back().MarkIfConditionAsComplete();
+            } else if (next_token.GetCategory() ==
+                       Token::Category::KEYWORD_ELSE) {
+                if (!term_stack.back().IsIf()) {
+                    throw std::invalid_argument("Unexpected 'else'");
+                }
+
+                term_stack.back().MarkIfThenAsComplete();
+            } else if (next_token.GetCategory() ==
                        Token::Category::OPEN_PAREN) {
                 stack_size_on_open_paren.emplace_back(term_stack.size());
                 term_stack.emplace_back(Term());
@@ -676,6 +844,10 @@ class Parser {
                         bound_variables.pop_back();
                     }
 
+                    if (term_stack.back().IsIf()) {
+                        term_stack.back().MarkIfElseAsComplete();
+                    }
+
                     CombineStackTop(term_stack);
                 }
 
@@ -684,6 +856,13 @@ class Parser {
                 if (!stack_size_on_open_paren.empty()) {
                     stack_size_on_open_paren.pop_back();
                 }
+            } else if (next_token.GetCategory() ==
+                       Token::Category::CONSTANT_TRUE) {
+                term_stack.back().Combine(Term::True());
+
+            } else if (next_token.GetCategory() ==
+                       Token::Category::CONSTANT_FALSE) {
+                term_stack.back().Combine(Term::False());
             } else {
                 std::ostringstream error_ss;
                 error_ss << "Unexpected token: " << next_token;
