@@ -675,13 +675,14 @@ class Term {
         throw std::logic_error(error_ss.str());
     }
 
+    bool is_complete_lambda_ = false;
+
    private:
     bool is_lambda_ = false;
     std::string lambda_arg_name_ = "";
     std::unique_ptr<Type> lambda_arg_type_{};
     std::unique_ptr<Term> lambda_body_{};
     // Marks whether parsing for the body of the lambda term is finished or not.
-    bool is_complete_lambda_ = false;
 
     bool is_variable_ = false;
     std::string variable_name_ = "";
@@ -812,9 +813,37 @@ class Parser {
                     term_stack.emplace_back(Term::If());
                 }
 
+                stack_size_on_open_paren.emplace_back(term_stack.size());
+                term_stack.emplace_back(Term());
+                ++balance_parens;
             } else if (next_token.GetCategory() ==
                        Token::Category::KEYWORD_THEN) {
-                // TODO then and else should be treated as parens, I guess.
+                while (!term_stack.empty() &&
+                       !stack_size_on_open_paren.empty() &&
+                       term_stack.size() > stack_size_on_open_paren.back()) {
+                    if (term_stack.back().IsLambda() &&
+                        !term_stack.back().is_complete_lambda_) {
+                        // Mark the λ as complete so that terms to its right
+                        // won't be combined to its body.
+                        term_stack.back().MarkLambdaAsComplete();
+                        // λ's variable is no longer part of the current binding
+                        // context, therefore pop it.
+                        bound_variables.pop_back();
+                    }
+
+                    if (term_stack.back().IsIf()) {
+                        term_stack.back().MarkIfElseAsComplete();
+                    }
+
+                    CombineStackTop(term_stack);
+                }
+
+                --balance_parens;
+
+                if (!stack_size_on_open_paren.empty()) {
+                    stack_size_on_open_paren.pop_back();
+                }
+
                 if (!term_stack.back().IsIf()) {
                     throw std::invalid_argument("Unexpected 'then'");
                 }
@@ -837,7 +866,8 @@ class Parser {
                 while (!term_stack.empty() &&
                        !stack_size_on_open_paren.empty() &&
                        term_stack.size() > stack_size_on_open_paren.back()) {
-                    if (term_stack.back().IsLambda()) {
+                    if (term_stack.back().IsLambda() &&
+                        !term_stack.back().is_complete_lambda_) {
                         // Mark the λ as complete so that terms to its right
                         // won't be combined to its body.
                         term_stack.back().MarkLambdaAsComplete();
