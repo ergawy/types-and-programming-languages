@@ -849,8 +849,38 @@ class Parser {
                 }
 
                 term_stack.back().MarkIfConditionAsComplete();
+
+                stack_size_on_open_paren.emplace_back(term_stack.size());
+                term_stack.emplace_back(Term());
+                ++balance_parens;
             } else if (next_token.GetCategory() ==
                        Token::Category::KEYWORD_ELSE) {
+                while (!term_stack.empty() &&
+                       !stack_size_on_open_paren.empty() &&
+                       term_stack.size() > stack_size_on_open_paren.back()) {
+                    if (term_stack.back().IsLambda() &&
+                        !term_stack.back().is_complete_lambda_) {
+                        // Mark the λ as complete so that terms to its right
+                        // won't be combined to its body.
+                        term_stack.back().MarkLambdaAsComplete();
+                        // λ's variable is no longer part of the current binding
+                        // context, therefore pop it.
+                        bound_variables.pop_back();
+                    }
+
+                    if (term_stack.back().IsIf()) {
+                        term_stack.back().MarkIfElseAsComplete();
+                    }
+
+                    CombineStackTop(term_stack);
+                }
+
+                --balance_parens;
+
+                if (!stack_size_on_open_paren.empty()) {
+                    stack_size_on_open_paren.pop_back();
+                }
+
                 if (!term_stack.back().IsIf()) {
                     throw std::invalid_argument("Unexpected 'else'");
                 }

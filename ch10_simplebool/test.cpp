@@ -988,6 +988,17 @@ void InitData() {
         TestData{"((l x:Bool. x))",
                  Lambda("x", Type::SimpleBool(), Term::Variable("x", 0))});
 
+    kData.emplace_back(
+        TestData{"if true then l x:Bool. x else false",
+                 If(Term::True(),
+                    Lambda("x", Type::SimpleBool(), Term::Variable("x", 0)),
+                    Term::False())});
+
+    kData.emplace_back(
+        TestData{"if true then false else l x:Bool. x",
+                 If(Term::True(), Term::False(),
+                    Lambda("x", Type::SimpleBool(), Term::Variable("x", 0)))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
