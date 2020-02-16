@@ -52,6 +52,9 @@ class Lexer {
     //
     // 2. Separating the code of reading the next token from the input character
     // buffer from the code of managing the output token buffer.
+    //
+    // NOTE The idea described above was implemented in "Simply Typed Lambda
+    // Calculus" (ch10_simplebool).
     Token NextToken() {
         if (is_cached_token_valid) {
             is_cached_token_valid = false;
