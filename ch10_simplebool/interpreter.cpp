@@ -15,5 +15,8 @@ int main(int argc, char* argv[]) {
 
     std::cout << "   " << program << "\n";
 
+    type_checker::TypeChecker type_checker;
+    std::cout << "-> " << type_checker.TypeOf(program) << "\n";
+
     return 0;
 }

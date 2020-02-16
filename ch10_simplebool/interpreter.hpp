@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -223,7 +224,14 @@ class Type {
 
    public:
     // TODO: For now, types are created over and over again. Instead, create
-    // each type once and use its reference.
+    // each type once and use its reference. For one thing, a Type shouldn't be
+    // owned by a term of that Type.
+
+    static Type IllTyped() {
+        Type type;
+        type.ill_typed_ = true;
+        return type;
+    }
 
     static Type SimpleBool() {
         Type type;
@@ -251,7 +259,11 @@ class Type {
     ~Type() = default;
 
     Type Clone() const {
-        if (simple_bool_) {
+        if (IsIllTyped()) {
+            return Type::IllTyped();
+        }
+
+        if (IsSimpleBool()) {
             return Type::SimpleBool();
         }
 
@@ -260,6 +272,10 @@ class Type {
     }
 
     bool operator==(const Type& other) const {
+        if (ill_typed_) {
+            return other.ill_typed_;
+        }
+
         if (simple_bool_) {
             return other.simple_bool_;
         }
@@ -270,7 +286,31 @@ class Type {
 
     bool operator!=(const Type& other) const { return !(*this == other); }
 
+    bool IsIllTyped() const { return ill_typed_; }
+
+    bool IsSimpleBool() const { return simple_bool_; }
+
+    bool IsFunction() const { return !ill_typed_ && !simple_bool_; }
+
+    Type& FunctionLHS() const {
+        if (!IsFunction()) {
+            throw std::invalid_argument("Invalid function type.");
+        }
+
+        return *lhs_;
+    }
+
+    Type& FunctionRHS() const {
+        if (!IsFunction()) {
+            throw std::invalid_argument("Invalid function type.");
+        }
+
+        return *rhs_;
+    }
+
    private:
+    bool ill_typed_ = false;
+
     bool simple_bool_ = false;
 
     std::unique_ptr<Type> lhs_;
@@ -278,12 +318,14 @@ class Type {
 };
 
 std::ostream& operator<<(std::ostream& out, const Type& type) {
-    if (type.simple_bool_) {
+    if (type.IsSimpleBool()) {
         out << lexer::kKeywordBool;
-    } else {
+    } else if (type.IsFunction()) {
         out << "(" << *type.lhs_ << " "
             << lexer::Token(lexer::Token::Category::ARROW) << " " << *type.rhs_
             << ")";
+    } else {
+        out << "Ⱦ";
     }
 
     return out;
@@ -541,6 +583,14 @@ class Term {
         return *lambda_body_;
     }
 
+    std::string LambdaArgName() const {
+        if (!IsLambda()) {
+            throw std::invalid_argument("Invalid Lambda term.");
+        }
+
+        return lambda_arg_name_;
+    }
+
     Type& LambdaArgType() const {
         if (!IsLambda()) {
             throw std::invalid_argument("Invalid Lambda term.");
@@ -549,9 +599,25 @@ class Term {
         return *lambda_arg_type_;
     }
 
+    std::string VariableName() const {
+        if (!IsVariable()) {
+            throw std::invalid_argument("Invalid variable term.");
+        }
+
+        return variable_name_;
+    }
+
+    int VariableDeBruijnIdx() const {
+        if (!IsVariable()) {
+            throw std::invalid_argument("Invalid variable term.");
+        }
+
+        return de_bruijn_idx_;
+    }
+
     Term& ApplicationLHS() const {
         if (!IsApplication()) {
-            throw std::invalid_argument("Invalide application term.");
+            throw std::invalid_argument("Invalid application term.");
         }
 
         return *application_lhs_;
@@ -1033,3 +1099,66 @@ class Parser {
     lexer::Lexer lexer_;
 };  // namespace parser
 }  // namespace parser
+
+namespace type_checker {
+using parser::Term;
+using parser::Type;
+
+class TypeChecker {
+    using Context = std::deque<std::pair<std::string, Type*>>;
+
+   public:
+    Type TypeOf(const Term& term) {
+        Context ctx;
+        return TypeOf(ctx, term);
+    }
+
+    Type TypeOf(const Context& ctx, const Term& term) {
+        Type res = Type::IllTyped();
+
+        if (term.IsTrue() || term.IsFalse()) {
+            res = Type::SimpleBool();
+        } else if (term.IsIf()) {
+            if (TypeOf(ctx, term.IfCondition()) == Type::SimpleBool()) {
+                Type then_type = TypeOf(ctx, term.IfThen());
+
+                if (then_type == TypeOf(ctx, term.IfElse())) {
+                    res = then_type.Clone();
+                }
+            }
+        } else if (term.IsLambda()) {
+            Context new_ctx =
+                AddBinding(ctx, term.LambdaArgName(), term.LambdaArgType());
+            Type return_type = TypeOf(new_ctx, term.LambdaBody());
+            res = Type::FunctionType(
+                std::make_unique<Type>(term.LambdaArgType().Clone()),
+                std::make_unique<Type>(return_type.Clone()));
+        } else if (term.IsApplication()) {
+            Type lhs_type = TypeOf(ctx, term.ApplicationLHS());
+            Type rhs_type = TypeOf(ctx, term.ApplicationRHS());
+
+            if (lhs_type.IsFunction() && lhs_type.FunctionLHS() == rhs_type) {
+                res = lhs_type.FunctionRHS().Clone();
+            }
+        } else if (term.IsVariable()) {
+            int idx = term.VariableDeBruijnIdx();
+
+            if (idx >= 0 && idx < ctx.size() &&
+                ctx[idx].first == term.VariableName()) {
+                res = ctx[idx].second->Clone();
+            }
+        }
+
+        return res;
+    }
+
+   private:
+    Context AddBinding(const Context& current_ctx, std::string var_name,
+                       Type& type) {
+        Context new_ctx = current_ctx;
+        new_ctx.push_front({var_name, &type});
+
+        return new_ctx;
+    }
+};
+}  // namespace type_checker
