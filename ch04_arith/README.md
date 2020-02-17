@@ -9,6 +9,10 @@ t ::=
     true
     false
     if t then t else t
+    0
+    succ t
+    pred t
+    iszero t
 ```
 
 ### Values
@@ -17,4 +21,13 @@ t ::=
 v ::=
     true
     false
+    nv
+
+nv ::=
+    0
+    succ nv
 ```
+
+## Evaluation Rules
+
+TODO

@@ -1,4 +1,4 @@
-# Typed Arithmetic Expressions
+# Simply Typed Lamda Calculus
 
 ## Syntax
 
@@ -6,32 +6,38 @@
 
 ```
 t ::=
+    x
+    l x:T. t
+    t t
     true
     false
     if t then t else t
-    0
-    succ t
-    pred t
-    iszero t
 ```
 
 ### Values
 
 ```
 v ::=
+    x
+    l x:T. t
     true
     false
-    nv
-
-nv ::=
-    0
-    succ nv
 ```
+
+### Types
 
 ```
 T ::=
     Bool
-    Nat
+    T -> T
+```
+
+### Contexts
+
+```
+Γ ::=
+    Φ
+    Γ, x:T
 ```
 
 ## Typing Rules
