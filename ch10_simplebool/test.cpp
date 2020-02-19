@@ -21,10 +21,17 @@ void Run();
 }
 }  // namespace type_checker
 
+namespace interpreter {
+namespace test {
+void Run();
+}
+}  // namespace interpreter
+
 int main() {
     lexer::test::Run();
     parser::test::Run();
     type_checker::test::Run();
+    interpreter::test::Run();
 
     return 0;
 }
@@ -1268,3 +1275,89 @@ void Run() {
 
 }  // namespace test
 }  // namespace type_checker
+
+namespace interpreter {
+namespace test {
+
+using namespace utils::test;
+using namespace type_checker;
+
+struct TestData {
+    std::string input_program_;
+    std::pair<std::string, Type> expected_eval_result_;
+};
+
+std::vector<TestData> kData{};
+
+void InitData() {
+    kData.emplace_back(TestData{"true", {"true", Type::SimpleBool()}});
+    kData.emplace_back(TestData{"false", {"false", Type::SimpleBool()}});
+    kData.emplace_back(TestData{"if false then true else false",
+                                {"false", Type::SimpleBool()}});
+    kData.emplace_back(TestData{"if true then false else true",
+                                {"false", Type::SimpleBool()}});
+    kData.emplace_back(
+        TestData{"if if true then false else true then true else false",
+                 {"false", Type::SimpleBool()}});
+}
+
+void Run() {
+    InitData();
+    std::cout << color::kYellow << "[Interpreter] Running " << kData.size()
+              << " tests...\n"
+              << color::kReset;
+    int num_failed = 0;
+
+    for (const auto& test : kData) {
+        Interpreter interpreter{};
+        std::pair<std::string, type_checker::Type> actual_eval_res;
+
+        try {
+            Term program =
+                parser::Parser{std::istringstream{test.input_program_}}
+                    .ParseProgram();
+            actual_eval_res = interpreter.Interpret(program);
+        } catch (std::exception& ex) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  Input program: " << test.input_program_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Expected evaluation result: " << color::kReset
+                      << test.expected_eval_result_.first << ": "
+                      << test.expected_eval_result_.second << "\n";
+
+            std::cout << color::kRed << "  Parsing failed." << color::kReset
+                      << "\n";
+
+            ++num_failed;
+            continue;
+        }
+
+        if (actual_eval_res.first != test.expected_eval_result_.first ||
+            actual_eval_res.second != test.expected_eval_result_.second) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  Input program: " << test.input_program_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Expected evaluation result: " << color::kReset
+                      << test.expected_eval_result_.first << ": "
+                      << test.expected_eval_result_.second << "\n";
+
+            std::cout << color::kRed
+                      << "  Actual evaluation result: " << color::kReset
+                      << actual_eval_res.first << ": " << actual_eval_res.second
+                      << "\n";
+
+            ++num_failed;
+        }
+    }
+
+    std::cout << color::kYellow << "Results: " << color::kReset
+              << (kData.size() - num_failed) << " out of " << kData.size()
+              << " tests passed.\n";
+}
+}  // namespace test
+}  // namespace interpreter
+

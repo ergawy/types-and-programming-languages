@@ -524,6 +524,10 @@ class Term {
         std::function<void(int, Term&)> walk = [&distance, &walk](
                                                    int binding_context_size,
                                                    Term& term) {
+            if (term.IsInvalid()) {
+                throw std::invalid_argument("Trying to shift an invalid term.");
+            }
+
             if (term.IsVariable()) {
                 if (term.de_bruijn_idx_ >= binding_context_size) {
                     term.de_bruijn_idx_ += distance;
@@ -533,8 +537,6 @@ class Term {
             } else if (term.IsApplication()) {
                 walk(binding_context_size, *term.application_lhs_);
                 walk(binding_context_size, *term.application_rhs_);
-            } else {
-                throw std::invalid_argument("Trying to shift an invalid term.");
             }
         };
 
@@ -734,6 +736,10 @@ class Term {
             return Application(
                 std::make_unique<Term>(application_lhs_->Clone()),
                 std::make_unique<Term>(application_rhs_->Clone()));
+        } else if (IsTrue()) {
+            return Term::True();
+        } else if (IsFalse()) {
+            return Term::False();
         }
 
         std::ostringstream error_ss;
@@ -1162,3 +1168,70 @@ class TypeChecker {
     }
 };
 }  // namespace type_checker
+
+namespace interpreter {
+class Interpreter {
+    using Term = parser::Term;
+
+   public:
+    std::pair<std::string, type_checker::Type> Interpret(Term& program) {
+        Eval(program);
+        type_checker::Type type = type_checker::TypeChecker().TypeOf(program);
+
+        std::ostringstream ss;
+        ss << program;
+
+        return {ss.str(), std::move(type)};
+    }
+
+   private:
+    void Eval(Term& term) {
+        try {
+            Eval1(term);
+            Eval(term);
+        } catch (std::invalid_argument&) {
+        }
+    }
+
+    void Eval1(Term& term) {
+        auto term_subst_top = [](Term& s, Term& t) {
+            // Adjust the free variables in s by increasing their static
+            // distances by 1. That's because s will now be embedded one level
+            // deeper in t (i.e. t's bound variable will be replaced by s).
+            s.Shift(1);
+            t.Substitute(0, s);
+            // Because of the substitution, one level of abstraction was peeled
+            // off. Account for that by decreasing the static distances of the
+            // free variables in t by 1.
+            t.Shift(-1);
+            // NOTE: For more details see: tapl,§6.3.
+        };
+
+        if (term.IsApplication() && term.ApplicationLHS().IsLambda() &&
+            IsValue(term.ApplicationRHS())) {
+            term_subst_top(term.ApplicationRHS(),
+                           term.ApplicationLHS().LambdaBody());
+            std::swap(term, term.ApplicationLHS().LambdaBody());
+        } else if (term.IsApplication() && IsValue(term.ApplicationLHS())) {
+            Eval1(term.ApplicationRHS());
+        } else if (term.IsApplication()) {
+            Eval1(term.ApplicationLHS());
+        } else if (term.IsIf()) {
+            if (term.IfCondition() == Term::True()) {
+                std::swap(term, term.IfThen());
+            } else if (term.IfCondition() == Term::False()) {
+                std::swap(term, term.IfElse());
+            } else {
+                Eval1(term.IfCondition());
+            }
+        } else {
+            throw std::invalid_argument("No applicable rule.");
+        }
+    }
+
+    bool IsValue(const Term& term) {
+        return term.IsLambda() || term.IsVariable() || term.IsTrue() ||
+               term.IsFalse();
+    }
+};
+}  // namespace interpreter
