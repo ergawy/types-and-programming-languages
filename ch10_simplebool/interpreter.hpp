@@ -182,7 +182,7 @@ std::ostream& operator<<(std::ostream& out, Token token) {
             out << ":";
             break;
         case Token::Category::ARROW:
-            out << "→";
+            out << "->";
             break;
 
         case Token::Category::CONSTANT_TRUE:
@@ -571,6 +571,10 @@ class Term {
             } else if (term.IsApplication()) {
                 walk(binding_context_size, *term.application_lhs_);
                 walk(binding_context_size, *term.application_rhs_);
+            } else if (term.IsIf()) {
+                walk(binding_context_size, *term.if_condition_);
+                walk(binding_context_size, *term.if_then_);
+                walk(binding_context_size, *term.if_else_);
             }
         };
 
@@ -781,9 +785,9 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     if (term.IsInvalid()) {
         out << "<INVALID>";
     } else if (term.IsVariable()) {
-        out << "[" << term.variable_name_ << "=" << term.de_bruijn_idx_ << "]";
+        out << term.variable_name_;
     } else if (term.IsLambda()) {
-        out << "{λ " << term.lambda_arg_name_ << " : " << *term.lambda_arg_type_
+        out << "{l " << term.lambda_arg_name_ << " : " << *term.lambda_arg_type_
             << ". " << *term.lambda_body_ << "}";
     } else if (term.IsApplication()) {
         out << "(" << *term.application_lhs_ << " <- " << *term.application_rhs_

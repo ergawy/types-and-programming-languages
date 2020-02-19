@@ -1299,6 +1299,31 @@ void InitData() {
     kData.emplace_back(
         TestData{"if if true then false else true then true else false",
                  {"false", Type::SimpleBool()}});
+
+    kData.emplace_back(TestData{"(l x:Bool. x) x", {"x", Type::IllTyped()}});
+
+    kData.emplace_back(
+        TestData{"(l x:Bool. x) true", {"true", Type::SimpleBool()}});
+
+    kData.emplace_back(TestData{"(l x:Bool. x) if false then true else false",
+                                {"false", Type::SimpleBool()}});
+
+    kData.emplace_back(
+        TestData{"(l x:Bool. x) if false then true else l x:Bool. x",
+                 {"{l x : Bool. x}",
+                  Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())}});
+
+    kData.emplace_back(TestData{"(l x:Bool. if x then true else false) true",
+                                {"true", Type::SimpleBool()}});
+
+    kData.emplace_back(TestData{"(l x:Bool. if x then true else false) false",
+                                {"false", Type::SimpleBool()}});
+
+    kData.emplace_back(TestData{
+        "(l x:Bool. if x then l x:Bool. x else l y:Bool->Bool. true) false",
+        {"{l y : (Bool -> Bool). true}",
+         Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
+                            SimpleBoolUP())}});
 }
 
 void Run() {
