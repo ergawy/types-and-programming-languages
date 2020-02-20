@@ -1,4 +1,7 @@
 # The Untyped Lmabda Calculus
+## Notes
+
+- A more readable-to-reand and understand lexer was implemeneted in [Simple Typed Lambda Calculus](ch10_simplebool).
 
 ## Syntax
 
