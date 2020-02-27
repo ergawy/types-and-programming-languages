@@ -1,4 +1,4 @@
-# Simply Typed Lamda Calculus
+# Typed Lamda Calculus (with varios extensions)
 
 ## Syntax
 
