@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cassert>
 #include <deque>
 #include <functional>
 #include <iostream>
@@ -223,74 +225,69 @@ class Type {
     friend std::ostream& operator<<(std::ostream&, const Type&);
 
    public:
-    // TODO: For now, types are created over and over again. Instead, create
-    // each type once and use its reference. For one thing, a Type shouldn't be
-    // owned by a term of that Type.
-
-    static Type IllTyped() {
-        Type type;
-        type.ill_typed_ = true;
-        return type;
-    }
-
-    static Type SimpleBool() {
-        Type type;
-        type.simple_bool_ = true;
-        return type;
-    }
-
-    static Type FunctionType(std::unique_ptr<Type> lhs,
-                             std::unique_ptr<Type> rhs) {
-        Type type;
-        type.lhs_ = std::move(lhs);
-        type.rhs_ = std::move(rhs);
+    static Type& IllTyped() {
+        static Type type;
 
         return type;
     }
 
-    Type() = default;
+    static Type& SimpleBool() {
+        static Type type(BaseType::BOOL);
+
+        return type;
+    }
+
+    static Type& FunctionType(Type& lhs, Type& rhs) {
+        static std::vector<std::unique_ptr<Type>> type_pool;
+
+        auto result =
+            std::find_if(std::begin(type_pool), std::end(type_pool),
+                         [&](const std::unique_ptr<Type>& type) {
+                             return type->lhs_ == &lhs && type->rhs_ == &rhs;
+                         });
+
+        if (result != std::end(type_pool)) {
+            return **result;
+        }
+
+        type_pool.emplace_back(std::make_unique<Type>(lhs, rhs));
+
+        return *type_pool.back();
+    }
 
     Type(const Type&) = delete;
     Type& operator=(const Type&) = delete;
 
-    Type(Type&&) = default;
-    Type& operator=(Type&&) = default;
+    Type(Type&&) = delete;
+    Type& operator=(Type&&) = delete;
 
     ~Type() = default;
 
-    Type Clone() const {
-        if (IsIllTyped()) {
-            return Type::IllTyped();
-        }
-
-        if (IsSimpleBool()) {
-            return Type::SimpleBool();
-        }
-
-        return Type::FunctionType(std::make_unique<Type>(lhs_->Clone()),
-                                  std::make_unique<Type>(rhs_->Clone()));
-    }
-
     bool operator==(const Type& other) const {
-        if (ill_typed_) {
-            return other.ill_typed_;
+        if (category_ != other.category_) {
+            return false;
         }
 
-        if (simple_bool_) {
-            return other.simple_bool_;
+        switch (category_) {
+            case TypeCategory::ILL:
+                return other.category_ == TypeCategory::ILL;
+            case TypeCategory::BASE:
+                return base_type_ == other.base_type_;
+            case TypeCategory::FUNCTION:
+                assert(lhs_ && rhs_ && other.lhs_ && other.rhs_);
+                return (*lhs_ == *other.lhs_) && (*rhs_ == *other.rhs_);
         }
-
-        return lhs_ && rhs_ && other.lhs_ && other.rhs_ &&
-               (*lhs_ == *other.lhs_) && (*rhs_ == *other.rhs_);
     }
 
     bool operator!=(const Type& other) const { return !(*this == other); }
 
-    bool IsIllTyped() const { return ill_typed_; }
+    bool IsIllTyped() const { return category_ == TypeCategory::BASE; }
 
-    bool IsSimpleBool() const { return simple_bool_; }
+    bool IsSimpleBool() const {
+        return category_ == TypeCategory::BASE && base_type_ == BaseType::BOOL;
+    }
 
-    bool IsFunction() const { return !ill_typed_ && !simple_bool_; }
+    bool IsFunction() const { return category_ == TypeCategory::FUNCTION; }
 
     Type& FunctionLHS() const {
         if (!IsFunction()) {
@@ -308,13 +305,31 @@ class Type {
         return *rhs_;
     }
 
+    Type(Type& lhs, Type& rhs)
+        : lhs_(&lhs), rhs_(&rhs), category_(TypeCategory::FUNCTION) {}
+
    private:
-    bool ill_typed_ = false;
+    enum class TypeCategory {
+        BASE,
+        FUNCTION,
+        ILL,
+    };
 
-    bool simple_bool_ = false;
+    enum class BaseType {
+        BOOL,
+    };
 
-    std::unique_ptr<Type> lhs_;
-    std::unique_ptr<Type> rhs_;
+    Type() = default;
+
+    Type(BaseType base_type)
+        : base_type_(base_type), category_(TypeCategory::BASE) {}
+
+    TypeCategory category_ = TypeCategory::ILL;
+
+    BaseType base_type_;
+
+    Type* lhs_ = nullptr;
+    Type* rhs_ = nullptr;
 };
 
 std::ostream& operator<<(std::ostream& out, const Type& type) {
@@ -335,10 +350,10 @@ class Term {
     friend std::ostream& operator<<(std::ostream&, const Term&);
 
    public:
-    static Term Lambda(std::string arg_name, std::unique_ptr<Type> arg_type) {
+    static Term Lambda(std::string arg_name, Type& arg_type) {
         Term result;
         result.lambda_arg_name_ = arg_name;
-        result.lambda_arg_type_ = std::move(arg_type);
+        result.lambda_arg_type_ = &arg_type;
         result.is_lambda_ = true;
 
         return result;
@@ -730,10 +745,8 @@ class Term {
         }
 
         if (IsLambda()) {
-            return std::move(
-                Lambda(lambda_arg_name_,
-                       std::make_unique<Type>(lambda_arg_type_->Clone()))
-                    .Combine(lambda_body_->Clone()));
+            return std::move(Lambda(lambda_arg_name_, *lambda_arg_type_)
+                                 .Combine(lambda_body_->Clone()));
         } else if (IsVariable()) {
             return Variable(variable_name_, de_bruijn_idx_);
         } else if (IsApplication()) {
@@ -756,7 +769,7 @@ class Term {
    private:
     bool is_lambda_ = false;
     std::string lambda_arg_name_ = "";
-    std::unique_ptr<Type> lambda_arg_type_{};
+    Type* lambda_arg_type_ = nullptr;
     std::unique_ptr<Term> lambda_body_{};
     // Marks whether parsing for the body of the lambda term is finished or not.
 
@@ -838,15 +851,13 @@ class Parser {
                 // If the current stack top is empty, use its slot for the
                 // lambda.
                 if (term_stack.back().IsEmpty()) {
-                    term_stack.back() = Term::Lambda(
-                        lambda_arg_name,
-                        std::make_unique<Type>(std::move(lambda_arg.second)));
+                    term_stack.back() =
+                        Term::Lambda(lambda_arg_name, lambda_arg.second);
                 } else {
                     // Else, push a new term on the stack to start building the
                     // lambda term.
-                    term_stack.emplace_back(Term::Lambda(
-                        lambda_arg_name,
-                        std::make_unique<Type>(std::move(lambda_arg.second))));
+                    term_stack.emplace_back(
+                        Term::Lambda(lambda_arg_name, lambda_arg.second));
                 }
             } else if (next_token.GetCategory() == Token::Category::VARIABLE) {
                 auto bound_variable_it =
@@ -999,7 +1010,7 @@ class Parser {
         term_stack.back().Combine(std::move(top));
     }
 
-    std::pair<std::string, Type> ParseLambdaArg() {
+    std::pair<std::string, Type&> ParseLambdaArg() {
         auto token = lexer_.NextToken();
 
         if (token.GetCategory() != Token::Category::VARIABLE) {
@@ -1013,18 +1024,18 @@ class Parser {
             throw std::logic_error("Expected to parse a ':'.");
         }
 
-        return {arg_name, std::move(ParseType())};
+        return {arg_name, ParseType()};
     }
 
-    Type ParseType() {
-        std::vector<Type> parts;
+    Type& ParseType() {
+        std::vector<Type*> parts;
         while (true) {
             auto token = lexer_.NextToken();
 
             if (token.GetCategory() == Token::Category::KEYWORD_BOOL) {
-                parts.emplace_back(Type::SimpleBool());
+                parts.emplace_back(&Type::SimpleBool());
             } else if (token.GetCategory() == Token::Category::OPEN_PAREN) {
-                parts.emplace_back(ParseType());
+                parts.emplace_back(&ParseType());
 
                 if (lexer_.NextToken().GetCategory() !=
                     Token::Category::CLOSE_PAREN) {
@@ -1052,13 +1063,12 @@ class Parser {
             }
         }
 
+        // Types are right-associative, combine them accordingly.
         for (int i = parts.size() - 2; i >= 0; --i) {
-            parts[i] = Type::FunctionType(
-                std::make_unique<Type>(std::move(parts[i])),
-                std::make_unique<Type>(std::move(parts[i + 1])));
+            parts[i] = &Type::FunctionType(*parts[i], *parts[i + 1]);
         }
 
-        return std::move(parts[0]);
+        return *parts[0];
     }
 
     Token ParseDot() {
@@ -1082,48 +1092,46 @@ class TypeChecker {
     using Context = std::deque<std::pair<std::string, Type*>>;
 
    public:
-    Type TypeOf(const Term& term) {
+    Type& TypeOf(const Term& term) {
         Context ctx;
         return TypeOf(ctx, term);
     }
 
-    Type TypeOf(const Context& ctx, const Term& term) {
-        Type res = Type::IllTyped();
+    Type& TypeOf(const Context& ctx, const Term& term) {
+        Type* res = &Type::IllTyped();
 
         if (term.IsTrue() || term.IsFalse()) {
-            res = Type::SimpleBool();
+            res = &Type::SimpleBool();
         } else if (term.IsIf()) {
             if (TypeOf(ctx, term.IfCondition()) == Type::SimpleBool()) {
-                Type then_type = TypeOf(ctx, term.IfThen());
+                Type& then_type = TypeOf(ctx, term.IfThen());
 
                 if (then_type == TypeOf(ctx, term.IfElse())) {
-                    res = then_type.Clone();
+                    res = &then_type;
                 }
             }
         } else if (term.IsLambda()) {
             Context new_ctx =
                 AddBinding(ctx, term.LambdaArgName(), term.LambdaArgType());
-            Type return_type = TypeOf(new_ctx, term.LambdaBody());
-            res = Type::FunctionType(
-                std::make_unique<Type>(term.LambdaArgType().Clone()),
-                std::make_unique<Type>(return_type.Clone()));
+            Type& return_type = TypeOf(new_ctx, term.LambdaBody());
+            res = &Type::FunctionType(term.LambdaArgType(), return_type);
         } else if (term.IsApplication()) {
-            Type lhs_type = TypeOf(ctx, term.ApplicationLHS());
-            Type rhs_type = TypeOf(ctx, term.ApplicationRHS());
+            Type& lhs_type = TypeOf(ctx, term.ApplicationLHS());
+            Type& rhs_type = TypeOf(ctx, term.ApplicationRHS());
 
             if (lhs_type.IsFunction() && lhs_type.FunctionLHS() == rhs_type) {
-                res = lhs_type.FunctionRHS().Clone();
+                res = &lhs_type.FunctionRHS();
             }
         } else if (term.IsVariable()) {
             int idx = term.VariableDeBruijnIdx();
 
             if (idx >= 0 && idx < ctx.size() &&
                 ctx[idx].first == term.VariableName()) {
-                res = ctx[idx].second->Clone();
+                res = ctx[idx].second;
             }
         }
 
-        return res;
+        return *res;
     }
 
    private:
@@ -1142,14 +1150,14 @@ class Interpreter {
     using Term = parser::Term;
 
    public:
-    std::pair<std::string, type_checker::Type> Interpret(Term& program) {
+    std::pair<std::string, type_checker::Type&> Interpret(Term& program) {
         Eval(program);
-        type_checker::Type type = type_checker::TypeChecker().TypeOf(program);
+        type_checker::Type& type = type_checker::TypeChecker().TypeOf(program);
 
         std::ostringstream ss;
         ss << program;
 
-        return {ss.str(), std::move(type)};
+        return {ss.str(), type};
     }
 
    private:

@@ -163,29 +163,12 @@ std::unique_ptr<Term> ApplicationUP(std::unique_ptr<Term> lhs,
         Term::Application(std::move(lhs), std::move(rhs)));
 }
 
-Term Lambda(std::string arg_name, Type&& type, Term&& body) {
-    return std::move(
-        Term::Lambda(arg_name, std::make_unique<Type>(std::move(type)))
-            .Combine(std::move(body)));
+Term Lambda(std::string arg_name, Type& type, Term&& body) {
+    return std::move(Term::Lambda(arg_name, type).Combine(std::move(body)));
 }
 
-std::unique_ptr<Term> LambdaUP(std::string arg_name, Type&& type, Term&& body) {
-    return std::make_unique<Term>(
-        Lambda(arg_name, std::move(type), std::move(body)));
-}
-
-std::unique_ptr<Type> IllTypedUP() {
-    return std::make_unique<Type>(Type::IllTyped());
-}
-
-std::unique_ptr<Type> SimpleBoolUP() {
-    return std::make_unique<Type>(Type::SimpleBool());
-}
-
-std::unique_ptr<Type> FunctionTypeUP(std::unique_ptr<Type> lhs,
-                                     std::unique_ptr<Type> rhs) {
-    return std::make_unique<Type>(
-        Type::FunctionType(std::move(lhs), std::move(rhs)));
+std::unique_ptr<Term> LambdaUP(std::string arg_name, Type& type, Term&& body) {
+    return std::make_unique<Term>(Lambda(arg_name, type, std::move(body)));
 }
 
 Term If(Term&& condition, Term&& then_part, Term&& else_part) {
@@ -921,34 +904,34 @@ void InitData() {
             VariableUP("w", 22))});
 
     // Test parsing types:
-    kData.emplace_back(
-        TestData{"l x:Bool->Bool. x",
-                 Lambda("x", Type::FunctionType(SimpleBoolUP(), SimpleBoolUP()),
-                        Term::Variable("x", 0))});
+    kData.emplace_back(TestData{
+        "l x:Bool->Bool. x",
+        Lambda("x", Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
         "l x:Bool->Bool->Bool. x",
-        Lambda(
-            "x",
-            Type::FunctionType(SimpleBoolUP(),
-                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP())),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::FunctionType(
+                   Type::SimpleBool(),
+                   Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool. x",
-        Lambda(
-            "x",
-            Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                               SimpleBoolUP()),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::FunctionType(
+                   Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+                   Type::SimpleBool()),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->Bool. x",
-        Lambda(
-            "x",
-            Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP())),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::FunctionType(
+                   Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+                   Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{"true", Term::True()});
 
@@ -956,13 +939,13 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
-        Lambda(
-            "x",
-            Type::FunctionType(
-                FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                FunctionTypeUP(SimpleBoolUP(),
-                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()))),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::FunctionType(
+                   Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+                   Type::FunctionType(Type::SimpleBool(),
+                                      Type::FunctionType(Type::SimpleBool(),
+                                                         Type::SimpleBool()))),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{"if true then true else false",
                                 If(Term::True(), Term::True(), Term::False())});
@@ -971,7 +954,8 @@ void InitData() {
         "if (if true then true else false) then (l y:Bool->Bool. y) "
         "else (l x:Bool. false)",
         If(If(Term::True(), Term::True(), Term::False()),
-           Lambda("y", Type::FunctionType(SimpleBoolUP(), SimpleBoolUP()),
+           Lambda("y",
+                  Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
                   Term::Variable("y", 0)),
            Lambda("x", Type::SimpleBool(), Term::False()))});
 
@@ -1121,7 +1105,7 @@ using namespace utils::test;
 
 struct TestData {
     std::string input_program_;
-    Type expected_type_;
+    Type& expected_type_;
 };
 
 std::vector<TestData> kData{};
@@ -1131,23 +1115,27 @@ void InitData() {
 
     kData.emplace_back(TestData{"x y", Type::IllTyped()});
 
-    kData.emplace_back(TestData{
-        "(l x:Bool. x)", Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())});
+    kData.emplace_back(
+        TestData{"(l x:Bool. x)",
+                 Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())});
 
-    kData.emplace_back(TestData{
-        "(l x:Bool. x x)", Type::FunctionType(SimpleBoolUP(), IllTypedUP())});
+    kData.emplace_back(
+        TestData{"(l x:Bool. x x)",
+                 Type::FunctionType(Type::SimpleBool(), Type::IllTyped())});
 
-    kData.emplace_back(TestData{
-        "(l x:Bool. x a)", Type::FunctionType(SimpleBoolUP(), IllTypedUP())});
+    kData.emplace_back(
+        TestData{"(l x:Bool. x a)",
+                 Type::FunctionType(Type::SimpleBool(), Type::IllTyped())});
 
     kData.emplace_back(
         TestData{"(l x:Bool. x y l y:Bool. y l z:Bool. z)",
-                 Type::FunctionType(SimpleBoolUP(), IllTypedUP())});
+                 Type::FunctionType(Type::SimpleBool(), Type::IllTyped())});
 
     kData.emplace_back(TestData{
         "(l x:Bool. l y:Bool. y)",
-        Type::FunctionType(SimpleBoolUP(),
-                           FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()))});
+        Type::FunctionType(
+            Type::SimpleBool(),
+            Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()))});
 
     kData.emplace_back(
         TestData{"(l x:Bool. x) (l y:Bool. y)", Type::IllTyped()});
@@ -1156,23 +1144,25 @@ void InitData() {
 
     kData.emplace_back(
         TestData{"(l x:Bool->Bool. x) (l y:Bool. y)",
-                 Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())});
+                 Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())});
 
     kData.emplace_back(TestData{"(l x:Bool. x) x", Type::IllTyped()});
 
     kData.emplace_back(TestData{
         "l x :Bool. (l y:Bool.((x y) x))",
-        Type::FunctionType(SimpleBoolUP(),
-                           FunctionTypeUP(SimpleBoolUP(), IllTypedUP()))});
+        Type::FunctionType(
+            Type::SimpleBool(),
+            Type::FunctionType(Type::SimpleBool(), Type::IllTyped()))});
 
     kData.emplace_back(
         TestData{"l x:Bool. (l y:Bool. y) x",
-                 Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())});
+                 Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())});
 
     kData.emplace_back(TestData{
         "l x:Bool->Bool. l y:Bool. x y",
-        Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                           FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()))});
+        Type::FunctionType(
+            Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+            Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()))});
 
     kData.emplace_back(
         TestData{"(l z:Bool. l x:Bool. x) (l  y:Bool. y)", Type::IllTyped()});
@@ -1184,14 +1174,16 @@ void InitData() {
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
         Type::FunctionType(
-            FunctionTypeUP(
-                FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                FunctionTypeUP(SimpleBoolUP(),
-                               FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()))),
-            FunctionTypeUP(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                           FunctionTypeUP(SimpleBoolUP(),
-                                          FunctionTypeUP(SimpleBoolUP(),
-                                                         SimpleBoolUP()))))});
+            Type::FunctionType(
+                Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+                Type::FunctionType(Type::SimpleBool(),
+                                   Type::FunctionType(Type::SimpleBool(),
+                                                      Type::SimpleBool()))),
+            Type::FunctionType(
+                Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+                Type::FunctionType(Type::SimpleBool(),
+                                   Type::FunctionType(Type::SimpleBool(),
+                                                      Type::SimpleBool()))))});
 
     kData.emplace_back(
         TestData{"if true then true else false", Type::SimpleBool()});
@@ -1204,19 +1196,19 @@ void InitData() {
     kData.emplace_back(
         TestData{"if (if true then true else false) then (l y:Bool. y) "
                  "else (l x:Bool. x)",
-                 Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())});
+                 Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())});
 
     kData.emplace_back(
         TestData{"if (if true then true else false) then (l y:Bool. y) "
                  "else (l x:Bool. false)",
-                 Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())});
+                 Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())});
 
     kData.emplace_back(
         TestData{"if (l x:Bool. x) then true else false", Type::IllTyped()});
 
     kData.emplace_back(
         TestData{"l x:Bool. if true then true else false",
-                 Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())});
+                 Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())});
 
     kData.emplace_back(TestData{"if true then (l x:Bool. x) true else false",
                                 Type::SimpleBool()});
@@ -1234,7 +1226,7 @@ void Run() {
             Parser parser{std::istringstream{test.input_program_}};
             Term program = parser.ParseProgram();
             TypeChecker type_checker;
-            Type res = type_checker.TypeOf(program);
+            Type& res = type_checker.TypeOf(program);
 
             if (test.expected_type_ != res) {
                 std::cout << color::kRed << "Test failed:" << color::kReset
@@ -1284,7 +1276,7 @@ using namespace type_checker;
 
 struct TestData {
     std::string input_program_;
-    std::pair<std::string, Type> expected_eval_result_;
+    std::pair<std::string, Type&> expected_eval_result_;
 };
 
 std::vector<TestData> kData{};
@@ -1311,7 +1303,7 @@ void InitData() {
     kData.emplace_back(
         TestData{"(l x:Bool. x) if false then true else l x:Bool. x",
                  {"{l x : Bool. x}",
-                  Type::FunctionType(SimpleBoolUP(), SimpleBoolUP())}});
+                  Type::FunctionType(Type::SimpleBool(), Type::SimpleBool())}});
 
     kData.emplace_back(TestData{"(l x:Bool. if x then true else false) true",
                                 {"true", Type::SimpleBool()}});
@@ -1322,8 +1314,9 @@ void InitData() {
     kData.emplace_back(TestData{
         "(l x:Bool. if x then l x:Bool. x else l y:Bool->Bool. true) false",
         {"{l y : (Bool -> Bool). true}",
-         Type::FunctionType(FunctionTypeUP(SimpleBoolUP(), SimpleBoolUP()),
-                            SimpleBoolUP())}});
+         Type::FunctionType(
+             Type::FunctionType(Type::SimpleBool(), Type::SimpleBool()),
+             Type::SimpleBool())}});
 }
 
 void Run() {
@@ -1335,13 +1328,33 @@ void Run() {
 
     for (const auto& test : kData) {
         Interpreter interpreter{};
-        std::pair<std::string, type_checker::Type> actual_eval_res;
 
         try {
             Term program =
                 parser::Parser{std::istringstream{test.input_program_}}
                     .ParseProgram();
-            actual_eval_res = interpreter.Interpret(program);
+            auto actual_eval_res = interpreter.Interpret(program);
+
+            if (actual_eval_res.first != test.expected_eval_result_.first ||
+                actual_eval_res.second != test.expected_eval_result_.second) {
+                std::cout << color::kRed << "Test failed:" << color::kReset
+                          << "\n";
+
+                std::cout << "  Input program: " << test.input_program_ << "\n";
+
+                std::cout << color::kGreen
+                          << "  Expected evaluation result: " << color::kReset
+                          << test.expected_eval_result_.first << ": "
+                          << test.expected_eval_result_.second << "\n";
+
+                std::cout << color::kRed
+                          << "  Actual evaluation result: " << color::kReset
+                          << actual_eval_res.first << ": "
+                          << actual_eval_res.second << "\n";
+
+                ++num_failed;
+            }
+
         } catch (std::exception& ex) {
             std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
 
@@ -1357,25 +1370,6 @@ void Run() {
 
             ++num_failed;
             continue;
-        }
-
-        if (actual_eval_res.first != test.expected_eval_result_.first ||
-            actual_eval_res.second != test.expected_eval_result_.second) {
-            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
-
-            std::cout << "  Input program: " << test.input_program_ << "\n";
-
-            std::cout << color::kGreen
-                      << "  Expected evaluation result: " << color::kReset
-                      << test.expected_eval_result_.first << ": "
-                      << test.expected_eval_result_.second << "\n";
-
-            std::cout << color::kRed
-                      << "  Actual evaluation result: " << color::kReset
-                      << actual_eval_res.first << ": " << actual_eval_res.second
-                      << "\n";
-
-            ++num_failed;
         }
     }
 
