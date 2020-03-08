@@ -231,7 +231,7 @@ class Type {
         return type;
     }
 
-    static Type& SimpleBool() {
+    static Type& Bool() {
         static Type type(BaseType::BOOL);
 
         return type;
@@ -283,7 +283,7 @@ class Type {
 
     bool IsIllTyped() const { return category_ == TypeCategory::BASE; }
 
-    bool IsSimpleBool() const {
+    bool IsBool() const {
         return category_ == TypeCategory::BASE && base_type_ == BaseType::BOOL;
     }
 
@@ -333,7 +333,7 @@ class Type {
 };
 
 std::ostream& operator<<(std::ostream& out, const Type& type) {
-    if (type.IsSimpleBool()) {
+    if (type.IsBool()) {
         out << lexer::kKeywordBool;
     } else if (type.IsFunction()) {
         out << "(" << *type.lhs_ << " "
@@ -1033,7 +1033,7 @@ class Parser {
             auto token = lexer_.NextToken();
 
             if (token.GetCategory() == Token::Category::KEYWORD_BOOL) {
-                parts.emplace_back(&Type::SimpleBool());
+                parts.emplace_back(&Type::Bool());
             } else if (token.GetCategory() == Token::Category::OPEN_PAREN) {
                 parts.emplace_back(&ParseType());
 
@@ -1101,9 +1101,9 @@ class TypeChecker {
         Type* res = &Type::IllTyped();
 
         if (term.IsTrue() || term.IsFalse()) {
-            res = &Type::SimpleBool();
+            res = &Type::Bool();
         } else if (term.IsIf()) {
-            if (TypeOf(ctx, term.IfCondition()) == Type::SimpleBool()) {
+            if (TypeOf(ctx, term.IfCondition()) == Type::Bool()) {
                 Type& then_type = TypeOf(ctx, term.IfThen());
 
                 if (then_type == TypeOf(ctx, term.IfElse())) {
