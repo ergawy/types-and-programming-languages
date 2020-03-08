@@ -435,12 +435,6 @@ class Term {
 
     bool IsFalse() const { return is_false_; }
 
-    void MarkIfConditionAsComplete() { is_complete_if_condition_ = true; }
-
-    void MarkIfThenAsComplete() { is_complete_if_then_ = true; }
-
-    void MarkIfElseAsComplete() { is_complete_if_else_ = true; }
-
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -498,40 +492,25 @@ class Term {
             *this = Application(std::make_unique<Term>(std::move(*this)),
                                 std::make_unique<Term>(std::move(term)));
         } else if (IsIf()) {
-            if (!is_complete_if_condition_) {
-                if (if_condition_) {
-                    if_condition_->Combine(std::move(term));
-                } else {
-                    if_condition_ = std::make_unique<Term>(std::move(term));
-                }
-            } else if (!is_complete_if_then_) {
-                if (if_then_) {
-                    if_then_->Combine(std::move(term));
-                } else {
-                    if_then_ = std::make_unique<Term>(std::move(term));
-                }
+            if (!if_condition_) {
+                if_condition_ = std::make_unique<Term>(std::move(term));
+            } else if (!if_then_) {
+                if_then_ = std::make_unique<Term>(std::move(term));
             } else {
-                if (if_else_) {
+                if (!if_else_) {
+                    if_else_ = std::make_unique<Term>(std::move(term));
+                } else {
                     // If the lambda body was completely parsed, then combining
                     // this term and the argument term means applying this
                     // lambda to the argument.
-                    if (is_complete_if_else_) {
-                        *this = Application(
-                            std::make_unique<Term>(std::move(*this)),
-                            std::make_unique<Term>(std::move(term)));
+                    *this =
+                        Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
 
-                        is_if_ = false;
-                        if_condition_ = nullptr;
-                        if_then_ = nullptr;
-                        if_else_ = nullptr;
-                        is_complete_if_condition_ = false;
-                        is_complete_if_then_ = false;
-                        is_complete_if_else_ = false;
-                    } else {
-                        if_else_->Combine(std::move(term));
-                    }
-                } else {
-                    if_else_ = std::make_unique<Term>(std::move(term));
+                    is_if_ = false;
+                    if_condition_ = nullptr;
+                    if_then_ = nullptr;
+                    if_else_ = nullptr;
                 }
             }
         } else if (IsTrue() || IsFalse()) {
@@ -797,9 +776,6 @@ class Term {
     std::unique_ptr<Term> if_condition_{};
     std::unique_ptr<Term> if_then_{};
     std::unique_ptr<Term> if_else_{};
-    bool is_complete_if_condition_ = false;
-    bool is_complete_if_then_ = false;
-    bool is_complete_if_else_ = false;
 
     bool is_true_ = false;
 
@@ -926,8 +902,6 @@ class Parser {
                     throw std::invalid_argument("Unexpected 'then'");
                 }
 
-                term_stack.back().MarkIfConditionAsComplete();
-
                 stack_size_on_open_paren.emplace_back(term_stack.size());
                 term_stack.emplace_back(Term());
                 ++balance_parens;
@@ -942,7 +916,6 @@ class Parser {
                     throw std::invalid_argument("Unexpected 'else'");
                 }
 
-                term_stack.back().MarkIfThenAsComplete();
             } else if (next_token.GetCategory() ==
                        Token::Category::OPEN_PAREN) {
                 stack_size_on_open_paren.emplace_back(term_stack.size());
@@ -997,10 +970,6 @@ class Parser {
                 // λ's variable is no longer part of the current binding
                 // context, therefore pop it.
                 bound_variables.pop_back();
-            }
-
-            if (term_stack.back().IsIf()) {
-                term_stack.back().MarkIfElseAsComplete();
             }
 
             CombineStackTop(term_stack);

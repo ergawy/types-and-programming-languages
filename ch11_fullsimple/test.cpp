@@ -182,11 +182,8 @@ std::unique_ptr<Term> LambdaUP(std::string arg_name, Type& type, Term&& body) {
 Term If(Term&& condition, Term&& then_part, Term&& else_part) {
     auto term = Term::If();
     term.Combine(std::move(condition));
-    term.MarkIfConditionAsComplete();
     term.Combine(std::move(then_part));
-    term.MarkIfThenAsComplete();
     term.Combine(std::move(else_part));
-    term.MarkIfElseAsComplete();
 
     return term;
 }
