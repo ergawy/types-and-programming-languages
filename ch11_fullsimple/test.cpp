@@ -64,13 +64,21 @@ std::vector<TestData> kData = {
               Token{Category::COLON}, Token{Category::ARROW}}},
 
     // Valid tokens (keywords):
-    TestData{"true false if else then",
+    TestData{"true false if else then 0 succ pred iszero Bool Nat",
              {
-                 Token{Category::CONSTANT_TRUE, "true"},
-                 Token{Category::CONSTANT_FALSE, "false"},
-                 Token{Category::KEYWORD_IF, "if"},
-                 Token{Category::KEYWORD_ELSE, "else"},
-                 Token{Category::KEYWORD_THEN, "then"},
+                 Token{Category::CONSTANT_TRUE},
+                 Token{Category::CONSTANT_FALSE},
+                 Token{Category::KEYWORD_IF},
+                 Token{Category::KEYWORD_ELSE},
+                 Token{Category::KEYWORD_THEN},
+
+                 Token{Category::CONSTANT_ZERO},
+                 Token{Category::KEYWORD_SUCC},
+                 Token{Category::KEYWORD_PRED},
+                 Token{Category::KEYWORD_ISZERO},
+
+                 Token{Category::KEYWORD_BOOL},
+                 Token{Category::KEYWORD_NAT},
              }},
 
     // Valid tokens (variables):

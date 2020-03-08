@@ -31,6 +31,13 @@ struct Token {
         KEYWORD_THEN,
         KEYWORD_ELSE,
 
+        CONSTANT_ZERO,
+
+        KEYWORD_NAT,
+        KEYWORD_SUCC,
+        KEYWORD_PRED,
+        KEYWORD_ISZERO,
+
         MARKER_END,
         MARKER_INVALID
     };
@@ -59,6 +66,7 @@ std::ostream& operator<<(std::ostream& out, Token token);
 namespace {
 const std::string kLambdaInputSymbol = "l";
 const std::string kKeywordBool = "Bool";
+const std::string kKeywordNat = "Nat";
 }  // namespace
 
 class Lexer {
@@ -79,12 +87,21 @@ class Lexer {
         }
 
         std::unordered_map<std::string, Token::Category> token_str_to_cat = {
+            {kKeywordBool, Token::Category::KEYWORD_BOOL},
             {"true", Token::Category::CONSTANT_TRUE},
             {"false", Token::Category::CONSTANT_FALSE},
-            {kKeywordBool, Token::Category::KEYWORD_BOOL},
+
             {"if", Token::Category::KEYWORD_IF},
             {"then", Token::Category::KEYWORD_THEN},
             {"else", Token::Category::KEYWORD_ELSE},
+
+            {kKeywordNat, Token::Category::KEYWORD_NAT},
+            {"0", Token::Category::CONSTANT_ZERO},
+
+            {"succ", Token::Category::KEYWORD_SUCC},
+            {"pred", Token::Category::KEYWORD_PRED},
+            {"iszero", Token::Category::KEYWORD_ISZERO},
+
             {kLambdaInputSymbol, Token::Category::LAMBDA},
             {"(", Token::Category::OPEN_PAREN},
             {")", Token::Category::CLOSE_PAREN},
