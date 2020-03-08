@@ -9,6 +9,7 @@
 #include <memory>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 namespace lexer {
@@ -77,30 +78,24 @@ class Lexer {
             return token;
         }
 
-        if (token_strings_[current_token_] == "true") {
-            token = Token(Token::Category::CONSTANT_TRUE);
-        } else if (token_strings_[current_token_] == "false") {
-            token = Token(Token::Category::CONSTANT_FALSE);
-        } else if (token_strings_[current_token_] == "if") {
-            token = Token(Token::Category::KEYWORD_IF);
-        } else if (token_strings_[current_token_] == "then") {
-            token = Token(Token::Category::KEYWORD_THEN);
-        } else if (token_strings_[current_token_] == "else") {
-            token = Token(Token::Category::KEYWORD_ELSE);
-        } else if (token_strings_[current_token_] == kLambdaInputSymbol) {
-            token = Token(Token::Category::LAMBDA);
-        } else if (token_strings_[current_token_] == kKeywordBool) {
-            token = Token(Token::Category::KEYWORD_BOOL);
-        } else if (token_strings_[current_token_] == "(") {
-            token = Token(Token::Category::OPEN_PAREN);
-        } else if (token_strings_[current_token_] == ")") {
-            token = Token(Token::Category::CLOSE_PAREN);
-        } else if (token_strings_[current_token_] == ".") {
-            token = Token(Token::Category::LAMBDA_DOT);
-        } else if (token_strings_[current_token_] == ":") {
-            token = Token(Token::Category::COLON);
-        } else if (token_strings_[current_token_] == "->") {
-            token = Token(Token::Category::ARROW);
+        std::unordered_map<std::string, Token::Category> token_str_to_cat = {
+            {"true", Token::Category::CONSTANT_TRUE},
+            {"false", Token::Category::CONSTANT_FALSE},
+            {kKeywordBool, Token::Category::KEYWORD_BOOL},
+            {"if", Token::Category::KEYWORD_IF},
+            {"then", Token::Category::KEYWORD_THEN},
+            {"else", Token::Category::KEYWORD_ELSE},
+            {kLambdaInputSymbol, Token::Category::LAMBDA},
+            {"(", Token::Category::OPEN_PAREN},
+            {")", Token::Category::CLOSE_PAREN},
+            {".", Token::Category::LAMBDA_DOT},
+            {":", Token::Category::COLON},
+            {"->", Token::Category::ARROW},
+        };
+
+        if (token_str_to_cat.find(token_strings_[current_token_]) !=
+            std::end(token_str_to_cat)) {
+            token = Token(token_str_to_cat[token_strings_[current_token_]]);
         } else if (IsVariableName(token_strings_[current_token_])) {
             token = Token(Token::Category::VARIABLE,
                           token_strings_[current_token_]);
