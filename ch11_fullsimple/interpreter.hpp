@@ -411,6 +411,34 @@ class Term {
         return result;
     }
 
+    static Term Succ() {
+        Term result;
+        result.is_succ_ = true;
+
+        return result;
+    }
+
+    static Term Pred() {
+        Term result;
+        result.is_pred_ = true;
+
+        return result;
+    }
+
+    static Term IsZero() {
+        Term result;
+        result.is_iszero_ = true;
+
+        return result;
+    }
+
+    static Term Zero() {
+        Term result;
+        result.is_zero_ = true;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -435,6 +463,14 @@ class Term {
 
     bool IsFalse() const { return is_false_; }
 
+    bool IsSucc() const { return is_succ_; }
+
+    bool IsPred() const { return is_pred_; }
+
+    bool IsIsZero() const { return is_iszero_; }
+
+    bool IsConstantZero() const { return is_zero_; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -445,15 +481,22 @@ class Term {
             return !application_lhs_ || !application_rhs_;
         } else if (IsIf()) {
             return !if_condition_ || !if_then_ || !if_else_;
-        } else if (IsTrue() || IsFalse()) {
+        } else if (IsTrue() || IsFalse() || IsConstantZero()) {
             return false;
+        } else if (IsSucc()) {
+            return !succ_arg_;
+        } else if (IsPred()) {
+            return !pred_arg_;
+        } else if (IsIsZero()) {
+            return !iszero_arg_;
         }
 
         return true;
     }
 
     bool IsEmpty() const {
-        return !IsLambda() && !IsVariable() && !IsApplication() && !IsIf();
+        return !IsLambda() && !IsVariable() && !IsApplication() && !IsIf() &&
+               !IsSucc() && !IsPred() && !IsIsZero();
     }
 
     Term& Combine(Term&& term) {
@@ -513,7 +556,28 @@ class Term {
                     if_else_ = nullptr;
                 }
             }
-        } else if (IsTrue() || IsFalse()) {
+        } else if (IsSucc()) {
+            if (!succ_arg_) {
+                succ_arg_ = std::make_unique<Term>(std::move(term));
+            } else {
+                throw std::invalid_argument(
+                    "Trying to combine with succ(...).");
+            }
+        } else if (IsPred()) {
+            if (!pred_arg_) {
+                pred_arg_ = std::make_unique<Term>(std::move(term));
+            } else {
+                throw std::invalid_argument(
+                    "Trying to combine with pred(...).");
+            }
+        } else if (IsIsZero()) {
+            if (!iszero_arg_) {
+                iszero_arg_ = std::make_unique<Term>(std::move(term));
+            } else {
+                throw std::invalid_argument(
+                    "Trying to combine with iszero(...).");
+            }
+        } else if (IsTrue() || IsFalse() || IsConstantZero()) {
             throw std::invalid_argument("Trying to combine with a constant.");
         } else {
             *this = std::move(term);
@@ -581,6 +645,12 @@ class Term {
                 walk(binding_context_size, *term.if_condition_);
                 walk(binding_context_size, *term.if_then_);
                 walk(binding_context_size, *term.if_else_);
+            } else if (term.IsSucc()) {
+                walk(binding_context_size, *term.succ_arg_);
+            } else if (term.IsPred()) {
+                walk(binding_context_size, *term.pred_arg_);
+            } else if (term.IsIsZero()) {
+                walk(binding_context_size, *term.iszero_arg_);
             }
         };
 
@@ -667,6 +737,30 @@ class Term {
         return *if_else_;
     }
 
+    Term& SuccArg() const {
+        if (!IsSucc()) {
+            throw std::invalid_argument("Invalid succ term.");
+        }
+
+        return *succ_arg_;
+    }
+
+    Term& PredArg() const {
+        if (!IsPred()) {
+            throw std::invalid_argument("Invalid pred term.");
+        }
+
+        return *pred_arg_;
+    }
+
+    Term& IsZeroArg() const {
+        if (!IsIsZero()) {
+            throw std::invalid_argument("Invalid iszero term.");
+        }
+
+        return *iszero_arg_;
+    }
+
     bool operator==(const Term& other) const {
         if (IsLambda() && other.IsLambda()) {
             return LambdaArgType() == other.LambdaArgType() &&
@@ -692,6 +786,22 @@ class Term {
         }
 
         if (IsFalse() && other.IsFalse()) {
+            return true;
+        }
+
+        if (IsSucc() && other.IsSucc()) {
+            return SuccArg() == other.SuccArg();
+        }
+
+        if (IsPred() && other.IsPred()) {
+            return PredArg() == other.PredArg();
+        }
+
+        if (IsIsZero() && other.IsIsZero()) {
+            return IsZeroArg() == other.IsZeroArg();
+        }
+
+        if (IsConstantZero() && other.IsConstantZero()) {
             return true;
         }
 
@@ -725,6 +835,17 @@ class Term {
             out << prefix << "true";
         } else if (IsFalse()) {
             out << prefix << "false";
+        } else if (IsSucc()) {
+            out << prefix << "succ\n";
+            out << succ_arg_->ASTString(indentation + 2);
+        } else if (IsPred()) {
+            out << prefix << "pred\n";
+            out << pred_arg_->ASTString(indentation + 2);
+        } else if (IsIsZero()) {
+            out << prefix << "iszero\n";
+            out << iszero_arg_->ASTString(indentation + 2);
+        } else if (IsConstantZero()) {
+            out << prefix << "0";
         }
 
         return out.str();
@@ -780,6 +901,17 @@ class Term {
     bool is_true_ = false;
 
     bool is_false_ = false;
+
+    bool is_succ_ = false;
+    std::unique_ptr<Term> succ_arg_{};
+
+    bool is_pred_ = false;
+    std::unique_ptr<Term> pred_arg_{};
+
+    bool is_iszero_ = false;
+    std::unique_ptr<Term> iszero_arg_{};
+
+    bool is_zero_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -800,6 +932,14 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
         out << "true";
     } else if (term.IsFalse()) {
         out << "false";
+    } else if (term.IsSucc()) {
+        out << "succ (" << *term.succ_arg_ << ")";
+    } else if (term.IsPred()) {
+        out << "succ (" << *term.pred_arg_ << ")";
+    } else if (term.IsIsZero()) {
+        out << "succ (" << *term.iszero_arg_ << ")";
+    } else if (term.IsConstantZero()) {
+        out << "0";
     } else {
         out << "<ERROR>";
     }
@@ -915,7 +1055,39 @@ class Parser {
                 if (!term_stack.back().IsIf()) {
                     throw std::invalid_argument("Unexpected 'else'");
                 }
-
+            } else if (next_token.GetCategory() ==
+                       Token::Category::KEYWORD_SUCC) {
+                // If the current stack top is empty, use its slot for the
+                // succ term.
+                if (term_stack.back().IsEmpty()) {
+                    term_stack.back() = Term::Succ();
+                } else {
+                    // Else, push a new term on the stack to start building the
+                    // if condition.
+                    term_stack.emplace_back(Term::Succ());
+                }
+            } else if (next_token.GetCategory() ==
+                       Token::Category::KEYWORD_PRED) {
+                // If the current stack top is empty, use its slot for the
+                // pred term.
+                if (term_stack.back().IsEmpty()) {
+                    term_stack.back() = Term::Pred();
+                } else {
+                    // Else, push a new term on the stack to start building the
+                    // if condition.
+                    term_stack.emplace_back(Term::Pred());
+                }
+            } else if (next_token.GetCategory() ==
+                       Token::Category::KEYWORD_ISZERO) {
+                // If the current stack top is empty, use its slot for the
+                // iszero term.
+                if (term_stack.back().IsEmpty()) {
+                    term_stack.back() = Term::IsZero();
+                } else {
+                    // Else, push a new term on the stack to start building the
+                    // if condition.
+                    term_stack.emplace_back(Term::IsZero());
+                }
             } else if (next_token.GetCategory() ==
                        Token::Category::OPEN_PAREN) {
                 stack_size_on_open_paren.emplace_back(term_stack.size());
@@ -934,6 +1106,9 @@ class Parser {
             } else if (next_token.GetCategory() ==
                        Token::Category::CONSTANT_FALSE) {
                 term_stack.back().Combine(Term::False());
+            } else if (next_token.GetCategory() ==
+                       Token::Category::CONSTANT_ZERO) {
+                term_stack.back().Combine(Term::Zero());
             } else {
                 std::ostringstream error_ss;
                 error_ss << "Unexpected token: " << next_token;

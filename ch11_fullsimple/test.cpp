@@ -188,6 +188,27 @@ Term If(Term&& condition, Term&& then_part, Term&& else_part) {
     return term;
 }
 
+Term Succ(Term&& arg) {
+    auto term = Term::Succ();
+    term.Combine(std::move(arg));
+
+    return term;
+}
+
+Term Pred(Term&& arg) {
+    auto term = Term::Pred();
+    term.Combine(std::move(arg));
+
+    return term;
+}
+
+Term IsZero(Term&& arg) {
+    auto term = Term::IsZero();
+    term.Combine(std::move(arg));
+
+    return term;
+}
+
 }  // namespace
 
 namespace parser {
@@ -928,6 +949,14 @@ void InitData() {
 
     kData.emplace_back(TestData{"false", Term::False()});
 
+    kData.emplace_back(TestData{"0", Term::Zero()});
+
+    kData.emplace_back(TestData{"succ 0", Succ(Term::Zero())});
+
+    kData.emplace_back(TestData{"pred 0", Pred(Term::Zero())});
+
+    kData.emplace_back(TestData{"iszero 0", IsZero(Term::Zero())});
+
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
         Lambda("x",
@@ -987,6 +1016,24 @@ void InitData() {
         TestData{"if true then false else l x:Bool. x",
                  If(Term::True(), Term::False(),
                     Lambda("x", Type::Bool(), Term::Variable("x", 0)))});
+
+    kData.emplace_back(TestData{"if false then true else 0",
+                                If(Term::False(), Term::True(), Term::Zero())});
+
+    kData.emplace_back(
+        TestData{"if false then true else succ 0",
+                 If(Term::False(), Term::True(), Succ(Term::Zero()))});
+
+    kData.emplace_back(
+        TestData{"if false then true else succ succ 0",
+                 If(Term::False(), Term::True(), Succ(Succ(Term::Zero())))});
+
+    kData.emplace_back(TestData{
+        "if false then true else succ succ succ 0",
+        If(Term::False(), Term::True(), Succ(Succ(Succ(Term::Zero()))))});
+    kData.emplace_back(
+        TestData{"if succ 0 then succ 0 else true",
+                 If(Succ(Term::Zero()), Succ(Term::Zero()), Term::True())});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
