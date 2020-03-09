@@ -173,58 +173,41 @@ class Lexer {
 };
 
 std::ostream& operator<<(std::ostream& out, Token token) {
-    switch (token.GetCategory()) {
-        case Token::Category::LAMBDA:
-            out << "λ";
-            break;
-        case Token::Category::KEYWORD_BOOL:
-            out << "<Bool>";
-            break;
-        case Token::Category::VARIABLE:
-            out << token.GetText();
-            break;
-        case Token::Category::LAMBDA_DOT:
-            out << ".";
-            break;
-        case Token::Category::OPEN_PAREN:
-            out << "(";
-            break;
-        case Token::Category::CLOSE_PAREN:
-            out << ")";
-            break;
-        case Token::Category::COLON:
-            out << ":";
-            break;
-        case Token::Category::ARROW:
-            out << "->";
-            break;
+    std::unordered_map<Token::Category, std::string> token_to_str = {
+        {Token::Category::LAMBDA, "λ"},
+        {Token::Category::KEYWORD_BOOL, "<Bool>"},
+        {Token::Category::KEYWORD_NAT, "<Nat>"},
+        {Token::Category::LAMBDA_DOT, "."},
+        {Token::Category::OPEN_PAREN, "("},
+        {Token::Category::CLOSE_PAREN, ")"},
+        {Token::Category::COLON, ":"},
+        {Token::Category::ARROW, "->"},
 
-        case Token::Category::CONSTANT_TRUE:
-            out << "<true>";
-            break;
-        case Token::Category::CONSTANT_FALSE:
-            out << "<false>";
-            break;
-        case Token::Category::KEYWORD_IF:
-            out << "<if>";
-            break;
-        case Token::Category::KEYWORD_THEN:
-            out << "<then>";
-            break;
-        case Token::Category::KEYWORD_ELSE:
-            out << "<else>";
-            break;
+        {Token::Category::CONSTANT_TRUE, "<true>"},
+        {Token::Category::CONSTANT_FALSE, "<false>"},
+        {Token::Category::KEYWORD_IF, "<if>"},
+        {Token::Category::KEYWORD_THEN, "<then>"},
+        {Token::Category::KEYWORD_ELSE, "<else>"},
 
-        case Token::Category::MARKER_END:
-            out << "<END>";
-            break;
+        {Token::Category::KEYWORD_SUCC, "succ"},
+        {Token::Category::KEYWORD_PRED, "pred"},
+        {Token::Category::KEYWORD_ISZERO, "iszero"},
 
-        case Token::Category::MARKER_INVALID:
-            out << "<INVALID>";
-            break;
+        {Token::Category::MARKER_END, "<END>"},
+        {Token::Category::MARKER_INVALID, "<INVALID>"},
+    };
 
-        default:
-            out << "<ILLEGAL_TOKEN>";
+    if (token_to_str.find(token.GetCategory()) != std::end(token_to_str)) {
+        out << token_to_str[token.GetCategory()];
+    } else {
+        switch (token.GetCategory()) {
+            case Token::Category::VARIABLE:
+                out << token.GetText();
+                break;
+
+            default:
+                out << "<ILLEGAL_TOKEN>";
+        }
     }
 
     return out;
@@ -249,7 +232,13 @@ class Type {
         return type;
     }
 
-    static Type& FunctionType(Type& lhs, Type& rhs) {
+    static Type& Nat() {
+        static Type type(BaseType::NAT);
+
+        return type;
+    }
+
+    static Type& Function(Type& lhs, Type& rhs) {
         static std::vector<std::unique_ptr<Type>> type_pool;
 
         auto result =
@@ -299,6 +288,10 @@ class Type {
         return category_ == TypeCategory::BASE && base_type_ == BaseType::BOOL;
     }
 
+    bool IsNat() const {
+        return category_ == TypeCategory::BASE && base_type_ == BaseType::NAT;
+    }
+
     bool IsFunction() const { return category_ == TypeCategory::FUNCTION; }
 
     Type& FunctionLHS() const {
@@ -329,6 +322,7 @@ class Type {
 
     enum class BaseType {
         BOOL,
+        NAT,
     };
 
     Type() = default;
@@ -347,6 +341,8 @@ class Type {
 std::ostream& operator<<(std::ostream& out, const Type& type) {
     if (type.IsBool()) {
         out << lexer::kKeywordBool;
+    } else if (type.IsNat()) {
+        out << lexer::kKeywordNat;
     } else if (type.IsFunction()) {
         out << "(" << *type.lhs_ << " "
             << lexer::Token(lexer::Token::Category::ARROW) << " " << *type.rhs_
@@ -484,11 +480,11 @@ class Term {
         } else if (IsTrue() || IsFalse() || IsConstantZero()) {
             return false;
         } else if (IsSucc()) {
-            return !succ_arg_;
+            return !unary_op_arg_;
         } else if (IsPred()) {
-            return !pred_arg_;
+            return !unary_op_arg_;
         } else if (IsIsZero()) {
-            return !iszero_arg_;
+            return !unary_op_arg_;
         }
 
         return true;
@@ -557,22 +553,22 @@ class Term {
                 }
             }
         } else if (IsSucc()) {
-            if (!succ_arg_) {
-                succ_arg_ = std::make_unique<Term>(std::move(term));
+            if (!unary_op_arg_) {
+                unary_op_arg_ = std::make_unique<Term>(std::move(term));
             } else {
                 throw std::invalid_argument(
                     "Trying to combine with succ(...).");
             }
         } else if (IsPred()) {
-            if (!pred_arg_) {
-                pred_arg_ = std::make_unique<Term>(std::move(term));
+            if (!unary_op_arg_) {
+                unary_op_arg_ = std::make_unique<Term>(std::move(term));
             } else {
                 throw std::invalid_argument(
                     "Trying to combine with pred(...).");
             }
         } else if (IsIsZero()) {
-            if (!iszero_arg_) {
-                iszero_arg_ = std::make_unique<Term>(std::move(term));
+            if (!unary_op_arg_) {
+                unary_op_arg_ = std::make_unique<Term>(std::move(term));
             } else {
                 throw std::invalid_argument(
                     "Trying to combine with iszero(...).");
@@ -646,11 +642,11 @@ class Term {
                 walk(binding_context_size, *term.if_then_);
                 walk(binding_context_size, *term.if_else_);
             } else if (term.IsSucc()) {
-                walk(binding_context_size, *term.succ_arg_);
+                walk(binding_context_size, *term.unary_op_arg_);
             } else if (term.IsPred()) {
-                walk(binding_context_size, *term.pred_arg_);
+                walk(binding_context_size, *term.unary_op_arg_);
             } else if (term.IsIsZero()) {
-                walk(binding_context_size, *term.iszero_arg_);
+                walk(binding_context_size, *term.unary_op_arg_);
             }
         };
 
@@ -737,28 +733,12 @@ class Term {
         return *if_else_;
     }
 
-    Term& SuccArg() const {
-        if (!IsSucc()) {
-            throw std::invalid_argument("Invalid succ term.");
+    Term& UnaryOpArg() const {
+        if (!IsSucc() && !IsPred() && !IsIsZero()) {
+            throw std::invalid_argument("Invalid term.");
         }
 
-        return *succ_arg_;
-    }
-
-    Term& PredArg() const {
-        if (!IsPred()) {
-            throw std::invalid_argument("Invalid pred term.");
-        }
-
-        return *pred_arg_;
-    }
-
-    Term& IsZeroArg() const {
-        if (!IsIsZero()) {
-            throw std::invalid_argument("Invalid iszero term.");
-        }
-
-        return *iszero_arg_;
+        return *unary_op_arg_;
     }
 
     bool operator==(const Term& other) const {
@@ -790,15 +770,15 @@ class Term {
         }
 
         if (IsSucc() && other.IsSucc()) {
-            return SuccArg() == other.SuccArg();
+            return UnaryOpArg() == other.UnaryOpArg();
         }
 
         if (IsPred() && other.IsPred()) {
-            return PredArg() == other.PredArg();
+            return UnaryOpArg() == other.UnaryOpArg();
         }
 
         if (IsIsZero() && other.IsIsZero()) {
-            return IsZeroArg() == other.IsZeroArg();
+            return UnaryOpArg() == other.UnaryOpArg();
         }
 
         if (IsConstantZero() && other.IsConstantZero()) {
@@ -837,13 +817,13 @@ class Term {
             out << prefix << "false";
         } else if (IsSucc()) {
             out << prefix << "succ\n";
-            out << succ_arg_->ASTString(indentation + 2);
+            out << unary_op_arg_->ASTString(indentation + 2);
         } else if (IsPred()) {
             out << prefix << "pred\n";
-            out << pred_arg_->ASTString(indentation + 2);
+            out << unary_op_arg_->ASTString(indentation + 2);
         } else if (IsIsZero()) {
             out << prefix << "iszero\n";
-            out << iszero_arg_->ASTString(indentation + 2);
+            out << unary_op_arg_->ASTString(indentation + 2);
         } else if (IsConstantZero()) {
             out << prefix << "0";
         }
@@ -903,13 +883,9 @@ class Term {
     bool is_false_ = false;
 
     bool is_succ_ = false;
-    std::unique_ptr<Term> succ_arg_{};
-
     bool is_pred_ = false;
-    std::unique_ptr<Term> pred_arg_{};
-
     bool is_iszero_ = false;
-    std::unique_ptr<Term> iszero_arg_{};
+    std::unique_ptr<Term> unary_op_arg_{};
 
     bool is_zero_ = false;
 };
@@ -933,11 +909,11 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsFalse()) {
         out << "false";
     } else if (term.IsSucc()) {
-        out << "succ (" << *term.succ_arg_ << ")";
+        out << "succ (" << *term.unary_op_arg_ << ")";
     } else if (term.IsPred()) {
-        out << "succ (" << *term.pred_arg_ << ")";
+        out << "succ (" << *term.unary_op_arg_ << ")";
     } else if (term.IsIsZero()) {
-        out << "succ (" << *term.iszero_arg_ << ")";
+        out << "succ (" << *term.unary_op_arg_ << ")";
     } else if (term.IsConstantZero()) {
         out << "0";
     } else {
@@ -1190,6 +1166,8 @@ class Parser {
 
             if (token.GetCategory() == Token::Category::KEYWORD_BOOL) {
                 parts.emplace_back(&Type::Bool());
+            } else if (token.GetCategory() == Token::Category::KEYWORD_NAT) {
+                parts.emplace_back(&Type::Nat());
             } else if (token.GetCategory() == Token::Category::OPEN_PAREN) {
                 parts.emplace_back(&ParseType());
 
@@ -1221,7 +1199,7 @@ class Parser {
 
         // Types are right-associative, combine them accordingly.
         for (int i = parts.size() - 2; i >= 0; --i) {
-            parts[i] = &Type::FunctionType(*parts[i], *parts[i + 1]);
+            parts[i] = &Type::Function(*parts[i], *parts[i + 1]);
         }
 
         return *parts[0];
@@ -1258,6 +1236,8 @@ class TypeChecker {
 
         if (term.IsTrue() || term.IsFalse()) {
             res = &Type::Bool();
+        } else if (term.IsConstantZero()) {
+            res = &Type::Nat();
         } else if (term.IsIf()) {
             if (TypeOf(ctx, term.IfCondition()) == Type::Bool()) {
                 Type& then_type = TypeOf(ctx, term.IfThen());
@@ -1266,11 +1246,23 @@ class TypeChecker {
                     res = &then_type;
                 }
             }
+        } else if (term.IsSucc() || term.IsPred()) {
+            auto& subterm_type = TypeOf(ctx, term.UnaryOpArg());
+
+            if (subterm_type == Type::Nat()) {
+                res = &Type::Nat();
+            }
+        } else if (term.IsIsZero()) {
+            auto& subterm_type = TypeOf(ctx, term.UnaryOpArg());
+
+            if (subterm_type == Type::Nat()) {
+                res = &Type::Bool();
+            }
         } else if (term.IsLambda()) {
             Context new_ctx =
                 AddBinding(ctx, term.LambdaArgName(), term.LambdaArgType());
             Type& return_type = TypeOf(new_ctx, term.LambdaBody());
-            res = &Type::FunctionType(term.LambdaArgType(), return_type);
+            res = &Type::Function(term.LambdaArgType(), return_type);
         } else if (term.IsApplication()) {
             Type& lhs_type = TypeOf(ctx, term.ApplicationLHS());
             Type& rhs_type = TypeOf(ctx, term.ApplicationRHS());

@@ -918,32 +918,29 @@ void InitData() {
     // Test parsing types:
     kData.emplace_back(
         TestData{"l x:Bool->Bool. x",
-                 Lambda("x", Type::FunctionType(Type::Bool(), Type::Bool()),
+                 Lambda("x", Type::Function(Type::Bool(), Type::Bool()),
                         Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
         "l x:Bool->Bool->Bool. x",
-        Lambda(
-            "x",
-            Type::FunctionType(Type::Bool(),
-                               Type::FunctionType(Type::Bool(), Type::Bool())),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::Function(Type::Bool(),
+                              Type::Function(Type::Bool(), Type::Bool())),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool. x",
-        Lambda(
-            "x",
-            Type::FunctionType(Type::FunctionType(Type::Bool(), Type::Bool()),
-                               Type::Bool()),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::Function(Type::Function(Type::Bool(), Type::Bool()),
+                              Type::Bool()),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->Bool. x",
-        Lambda(
-            "x",
-            Type::FunctionType(Type::FunctionType(Type::Bool(), Type::Bool()),
-                               Type::FunctionType(Type::Bool(), Type::Bool())),
-            Term::Variable("x", 0))});
+        Lambda("x",
+               Type::Function(Type::Function(Type::Bool(), Type::Bool()),
+                              Type::Function(Type::Bool(), Type::Bool())),
+               Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{"true", Term::True()});
 
@@ -960,11 +957,10 @@ void InitData() {
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
         Lambda("x",
-               Type::FunctionType(
-                   Type::FunctionType(Type::Bool(), Type::Bool()),
-                   Type::FunctionType(
-                       Type::Bool(),
-                       Type::FunctionType(Type::Bool(), Type::Bool()))),
+               Type::Function(
+                   Type::Function(Type::Bool(), Type::Bool()),
+                   Type::Function(Type::Bool(),
+                                  Type::Function(Type::Bool(), Type::Bool()))),
                Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{"if true then true else false",
@@ -974,7 +970,7 @@ void InitData() {
         TestData{"if (if true then true else false) then (l y:Bool->Bool. y) "
                  "else (l x:Bool. false)",
                  If(If(Term::True(), Term::True(), Term::False()),
-                    Lambda("y", Type::FunctionType(Type::Bool(), Type::Bool()),
+                    Lambda("y", Type::Function(Type::Bool(), Type::Bool()),
                            Term::Variable("y", 0)),
                     Lambda("x", Type::Bool(), Term::False()))});
 
@@ -1031,9 +1027,29 @@ void InitData() {
     kData.emplace_back(TestData{
         "if false then true else succ succ succ 0",
         If(Term::False(), Term::True(), Succ(Succ(Succ(Term::Zero()))))});
+
     kData.emplace_back(
         TestData{"if succ 0 then succ 0 else true",
                  If(Succ(Term::Zero()), Succ(Term::Zero()), Term::True())});
+
+    kData.emplace_back(
+        TestData{"if true then succ 0 else 0",
+                 If(Term::True(), Succ(Term::Zero()), Term::Zero())});
+
+    kData.emplace_back(TestData{"iszero pred succ succ 0",
+                                IsZero(Pred(Succ(Succ(Term::Zero()))))});
+
+    kData.emplace_back(TestData{"pred succ 0", Pred(Succ(Term::Zero()))});
+
+    kData.emplace_back(
+        TestData{"l x:Nat. pred pred x",
+                 Lambda("x", Type::Nat(), Pred(Pred(Term::Variable("x", 0))))});
+
+    kData.emplace_back(TestData{
+        "(l x:Nat. pred pred x) succ succ succ 0",
+        Term::Application(
+            LambdaUP("x", Type::Nat(), Pred(Pred(Term::Variable("x", 0)))),
+            std::make_unique<Term>(Succ(Succ(Succ(Term::Zero())))))});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
@@ -1054,6 +1070,18 @@ void InitData() {
     kData.emplace_back(TestData{"if true"});
     kData.emplace_back(TestData{"if true then true"});
     kData.emplace_back(TestData{"if true then true else"});
+    kData.emplace_back(TestData{"succ"});
+    kData.emplace_back(TestData{"pred"});
+    kData.emplace_back(TestData{"pred pred"});
+    kData.emplace_back(TestData{"pred succ"});
+    kData.emplace_back(TestData{"pred succ 1"});
+    kData.emplace_back(TestData{"pred succ if true then true false"});
+    kData.emplace_back(TestData{"succ"});
+    kData.emplace_back(TestData{"succ 1"});
+    kData.emplace_back(TestData{"succ pred 0 pred"});
+    kData.emplace_back(TestData{"succ pred 0 pred 0"});
+    kData.emplace_back(TestData{"succ pred 0 presd"});
+    kData.emplace_back(TestData{"succ succ 1"});
 }
 
 void Run() {
@@ -1149,48 +1177,46 @@ void InitData() {
 
     kData.emplace_back(TestData{"x y", Type::IllTyped()});
 
-    kData.emplace_back(TestData{
-        "(l x:Bool. x)", Type::FunctionType(Type::Bool(), Type::Bool())});
+    kData.emplace_back(
+        TestData{"(l x:Bool. x)", Type::Function(Type::Bool(), Type::Bool())});
 
     kData.emplace_back(TestData{
-        "(l x:Bool. x x)", Type::FunctionType(Type::Bool(), Type::IllTyped())});
+        "(l x:Bool. x x)", Type::Function(Type::Bool(), Type::IllTyped())});
 
     kData.emplace_back(TestData{
-        "(l x:Bool. x a)", Type::FunctionType(Type::Bool(), Type::IllTyped())});
+        "(l x:Bool. x a)", Type::Function(Type::Bool(), Type::IllTyped())});
 
     kData.emplace_back(
         TestData{"(l x:Bool. x y l y:Bool. y l z:Bool. z)",
-                 Type::FunctionType(Type::Bool(), Type::IllTyped())});
+                 Type::Function(Type::Bool(), Type::IllTyped())});
 
-    kData.emplace_back(TestData{
-        "(l x:Bool. l y:Bool. y)",
-        Type::FunctionType(Type::Bool(),
-                           Type::FunctionType(Type::Bool(), Type::Bool()))});
+    kData.emplace_back(
+        TestData{"(l x:Bool. l y:Bool. y)",
+                 Type::Function(Type::Bool(),
+                                Type::Function(Type::Bool(), Type::Bool()))});
 
     kData.emplace_back(
         TestData{"(l x:Bool. x) (l y:Bool. y)", Type::IllTyped()});
 
     kData.emplace_back(TestData{"(l x:Bool. x) true", Type::Bool()});
 
-    kData.emplace_back(
-        TestData{"(l x:Bool->Bool. x) (l y:Bool. y)",
-                 Type::FunctionType(Type::Bool(), Type::Bool())});
+    kData.emplace_back(TestData{"(l x:Bool->Bool. x) (l y:Bool. y)",
+                                Type::Function(Type::Bool(), Type::Bool())});
 
     kData.emplace_back(TestData{"(l x:Bool. x) x", Type::IllTyped()});
 
     kData.emplace_back(TestData{
         "l x :Bool. (l y:Bool.((x y) x))",
-        Type::FunctionType(
-            Type::Bool(), Type::FunctionType(Type::Bool(), Type::IllTyped()))});
+        Type::Function(Type::Bool(),
+                       Type::Function(Type::Bool(), Type::IllTyped()))});
+
+    kData.emplace_back(TestData{"l x:Bool. (l y:Bool. y) x",
+                                Type::Function(Type::Bool(), Type::Bool())});
 
     kData.emplace_back(
-        TestData{"l x:Bool. (l y:Bool. y) x",
-                 Type::FunctionType(Type::Bool(), Type::Bool())});
-
-    kData.emplace_back(TestData{
-        "l x:Bool->Bool. l y:Bool. x y",
-        Type::FunctionType(Type::FunctionType(Type::Bool(), Type::Bool()),
-                           Type::FunctionType(Type::Bool(), Type::Bool()))});
+        TestData{"l x:Bool->Bool. l y:Bool. x y",
+                 Type::Function(Type::Function(Type::Bool(), Type::Bool()),
+                                Type::Function(Type::Bool(), Type::Bool()))});
 
     kData.emplace_back(
         TestData{"(l z:Bool. l x:Bool. x) (l  y:Bool. y)", Type::IllTyped()});
@@ -1201,17 +1227,15 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
-        Type::FunctionType(
-            Type::FunctionType(
-                Type::FunctionType(Type::Bool(), Type::Bool()),
-                Type::FunctionType(
-                    Type::Bool(),
-                    Type::FunctionType(Type::Bool(), Type::Bool()))),
-            Type::FunctionType(
-                Type::FunctionType(Type::Bool(), Type::Bool()),
-                Type::FunctionType(
-                    Type::Bool(),
-                    Type::FunctionType(Type::Bool(), Type::Bool()))))});
+        Type::Function(
+            Type::Function(
+                Type::Function(Type::Bool(), Type::Bool()),
+                Type::Function(Type::Bool(),
+                               Type::Function(Type::Bool(), Type::Bool()))),
+            Type::Function(
+                Type::Function(Type::Bool(), Type::Bool()),
+                Type::Function(Type::Bool(),
+                               Type::Function(Type::Bool(), Type::Bool()))))});
 
     kData.emplace_back(TestData{"if true then true else false", Type::Bool()});
 
@@ -1223,22 +1247,39 @@ void InitData() {
     kData.emplace_back(
         TestData{"if (if true then true else false) then (l y:Bool. y) "
                  "else (l x:Bool. x)",
-                 Type::FunctionType(Type::Bool(), Type::Bool())});
+                 Type::Function(Type::Bool(), Type::Bool())});
 
     kData.emplace_back(
         TestData{"if (if true then true else false) then (l y:Bool. y) "
                  "else (l x:Bool. false)",
-                 Type::FunctionType(Type::Bool(), Type::Bool())});
+                 Type::Function(Type::Bool(), Type::Bool())});
 
     kData.emplace_back(
         TestData{"if (l x:Bool. x) then true else false", Type::IllTyped()});
 
-    kData.emplace_back(
-        TestData{"l x:Bool. if true then true else false",
-                 Type::FunctionType(Type::Bool(), Type::Bool())});
+    kData.emplace_back(TestData{"l x:Bool. if true then true else false",
+                                Type::Function(Type::Bool(), Type::Bool())});
 
     kData.emplace_back(
         TestData{"if true then (l x:Bool. x) true else false", Type::Bool()});
+
+    kData.emplace_back(TestData{"0", Type::Nat()});
+
+    kData.emplace_back(TestData{"succ 0", Type::Nat()});
+
+    kData.emplace_back(TestData{"pred 0", Type::Nat()});
+
+    kData.emplace_back(TestData{"iszero 0", Type::Bool()});
+
+    kData.emplace_back(TestData{"iszero pred 0", Type::Bool()});
+
+    kData.emplace_back(TestData{"pred iszero 0", Type::IllTyped()});
+
+    kData.emplace_back(TestData{"l x:Nat. pred pred x",
+                                Type::Function(Type::Nat(), Type::Nat())});
+
+    kData.emplace_back(
+        TestData{"(l x:Nat. pred pred x) succ succ succ 0", Type::Nat()});
 }
 
 void Run() {
@@ -1328,7 +1369,7 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) if false then true else l x:Bool. x",
-        {"{l x : Bool. x}", Type::FunctionType(Type::Bool(), Type::Bool())}});
+        {"{l x : Bool. x}", Type::Function(Type::Bool(), Type::Bool())}});
 
     kData.emplace_back(TestData{"(l x:Bool. if x then true else false) true",
                                 {"true", Type::Bool()}});
@@ -1339,8 +1380,8 @@ void InitData() {
     kData.emplace_back(TestData{
         "(l x:Bool. if x then l x:Bool. x else l y:Bool->Bool. true) false",
         {"{l y : (Bool -> Bool). true}",
-         Type::FunctionType(Type::FunctionType(Type::Bool(), Type::Bool()),
-                            Type::Bool())}});
+         Type::Function(Type::Function(Type::Bool(), Type::Bool()),
+                        Type::Bool())}});
 }
 
 void Run() {
