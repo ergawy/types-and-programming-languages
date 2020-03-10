@@ -539,7 +539,7 @@ class Term {
                 if (!if_else_) {
                     if_else_ = std::make_unique<Term>(std::move(term));
                 } else {
-                    // If the lambda body was completely parsed, then combining
+                    // If the if condition was completely parsed, then combining
                     // this term and the argument term means applying this
                     // lambda to the argument.
                     *this =
