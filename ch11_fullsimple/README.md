@@ -12,6 +12,10 @@ t ::=
     true
     false
     if t then t else t
+    0
+    succ t
+    pred t
+    iszero t
 ```
 
 ### Values
@@ -22,6 +26,8 @@ v ::=
     l x:T. t
     true
     false
+    0
+    succ v
 ```
 
 ### Types
@@ -29,6 +35,7 @@ v ::=
 ```
 T ::=
     Bool
+    Nat
     T -> T
 ```
 
