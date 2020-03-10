@@ -10,6 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace lexer {
@@ -849,6 +850,14 @@ class Term {
             return Term::True();
         } else if (IsFalse()) {
             return Term::False();
+        } else if (IsConstantZero()) {
+            return Term::Zero();
+        } else if (IsSucc()) {
+            return std::move(Term::Succ().Combine(unary_op_arg_->Clone()));
+        } else if (IsSucc()) {
+            return std::move(Term::Pred().Combine(unary_op_arg_->Clone()));
+        } else if (IsIsZero()) {
+            return std::move(Term::IsZero().Combine(unary_op_arg_->Clone()));
         }
 
         std::ostringstream error_ss;
@@ -1305,7 +1314,22 @@ class Interpreter {
         std::ostringstream ss;
         ss << program;
 
-        return {ss.str(), type};
+        auto term_str = ss.str();
+
+        if (IsNatValue(program)) {
+            std::size_t start_pos = 0;
+            int num = 0;
+
+            while ((start_pos = term_str.find("succ", start_pos)) !=
+                   std::string::npos) {
+                ++num;
+                ++start_pos;
+            }
+
+            term_str = std::to_string(num);
+        }
+
+        return {term_str, type};
     }
 
    private:
@@ -1348,14 +1372,51 @@ class Interpreter {
             } else {
                 Eval1(term.IfCondition());
             }
+        } else if (term.IsSucc()) {
+            Eval1(term.UnaryOpArg());
+        } else if (term.IsPred()) {
+            auto& pred_arg = term.UnaryOpArg();
+
+            if (pred_arg.IsConstantZero()) {
+                std::swap(term, term.UnaryOpArg());
+            } else if (pred_arg.IsSucc()) {
+                if (IsNatValue(pred_arg)) {
+                    std::swap(term, pred_arg.UnaryOpArg());
+                } else {
+                    Eval1(pred_arg);
+                }
+            } else {
+                Eval1(pred_arg);
+            }
+        } else if (term.IsIsZero()) {
+            auto& iszero_arg = term.UnaryOpArg();
+
+            if (iszero_arg.IsConstantZero()) {
+                auto temp = Term::True();
+                std::swap(term, temp);
+            } else if (iszero_arg.IsSucc()) {
+                if (IsNatValue(iszero_arg)) {
+                    auto temp = Term::False();
+                    std::swap(term, temp);
+                } else {
+                    Eval1(iszero_arg);
+                }
+            } else {
+                Eval1(iszero_arg);
+            }
         } else {
             throw std::invalid_argument("No applicable rule.");
         }
     }
 
+    bool IsNatValue(const Term& term) {
+        return term.IsConstantZero() ||
+               (term.IsSucc() && IsNatValue(term.UnaryOpArg()));
+    }
+
     bool IsValue(const Term& term) {
         return term.IsLambda() || term.IsVariable() || term.IsTrue() ||
-               term.IsFalse();
+               term.IsFalse() || IsNatValue(term);
     }
 };
 }  // namespace interpreter

@@ -1360,6 +1360,20 @@ void InitData() {
         TestData{"if if true then false else true then true else false",
                  {"false", Type::Bool()}});
 
+    kData.emplace_back(TestData{"0", {"0", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"if false then true else 0", {"0", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"if false then true else succ 0", {"1", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"if false then true else succ succ 0", {"2", Type::Nat()}});
+
+    kData.emplace_back(TestData{"if false then true else succ succ succ 0",
+                                {"3", Type::Nat()}});
+
     kData.emplace_back(TestData{"(l x:Bool. x) x", {"x", Type::IllTyped()}});
 
     kData.emplace_back(TestData{"(l x:Bool. x) true", {"true", Type::Bool()}});
@@ -1382,6 +1396,12 @@ void InitData() {
         {"{l y : (Bool -> Bool). true}",
          Type::Function(Type::Function(Type::Bool(), Type::Bool()),
                         Type::Bool())}});
+
+    kData.emplace_back(
+        TestData{"(l x:Nat. succ succ x) 0", {"2", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"(l x:Nat. succ succ x) succ 0", {"3", Type::Nat()}});
 }
 
 void Run() {
