@@ -26,8 +26,11 @@ v ::=
     l x:T. t
     true
     false
+    nv
+    
+nv ::=
     0
-    succ v
+    succ nv
 ```
 
 ### Types
