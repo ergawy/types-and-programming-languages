@@ -58,10 +58,12 @@ using namespace utils::test;
 
 std::vector<TestData> kData = {
     // Valid tokens (non-variables):
-    TestData{"l . (  ) : ->",
-             {Token{Category::LAMBDA}, Token{Category::LAMBDA_DOT},
+    TestData{"l . ( ) : -> { } =",
+             {Token{Category::LAMBDA}, Token{Category::DOT},
               Token{Category::OPEN_PAREN}, Token{Category::CLOSE_PAREN},
-              Token{Category::COLON}, Token{Category::ARROW}}},
+              Token{Category::COLON}, Token{Category::ARROW},
+              Token{Category::OPEN_BRACE}, Token{Category::CLOSE_BRACE},
+              Token{Category::EQUAL}}},
 
     // Valid tokens (keywords):
     TestData{"true false if else then 0 succ pred iszero Bool Nat",
@@ -87,19 +89,18 @@ std::vector<TestData> kData = {
               Token{Category::VARIABLE, "L"}, Token{Category::VARIABLE, "test"},
               Token{Category::VARIABLE, "_"}}},
     // Invalid single-character tokens:
-    TestData{"! @ # $ % ^ & * - + = ? / < > ' \" \\ | [ ] {  }",
-             {Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-              Token{Category::MARKER_INVALID}}},
+    TestData{
+        "! @ # $ % ^ & * - + ? / < > ' \" \\ | [ ]  ",
+        {Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID}}},
 
     TestData{
         "!@ x*",

@@ -17,10 +17,15 @@ namespace lexer {
 struct Token {
     enum class Category {
         VARIABLE,
+
         LAMBDA,
-        LAMBDA_DOT,
+
+        DOT,
+        EQUAL,
         OPEN_PAREN,
         CLOSE_PAREN,
+        OPEN_BRACE,
+        CLOSE_BRACE,
         COLON,
         ARROW,
 
@@ -88,35 +93,39 @@ class Lexer {
         }
 
         std::unordered_map<std::string, Token::Category> token_str_to_cat = {
-            {kKeywordBool, Token::Category::KEYWORD_BOOL},
+            {kLambdaInputSymbol, Token::Category::LAMBDA},
+
+            {".", Token::Category::DOT},
+            {"=", Token::Category::EQUAL},
+            {"(", Token::Category::OPEN_PAREN},
+            {")", Token::Category::CLOSE_PAREN},
+            {"{", Token::Category::OPEN_BRACE},
+            {"}", Token::Category::CLOSE_BRACE},
+            {":", Token::Category::COLON},
+            {"->", Token::Category::ARROW},
+
             {"true", Token::Category::CONSTANT_TRUE},
             {"false", Token::Category::CONSTANT_FALSE},
 
+            {kKeywordBool, Token::Category::KEYWORD_BOOL},
             {"if", Token::Category::KEYWORD_IF},
             {"then", Token::Category::KEYWORD_THEN},
             {"else", Token::Category::KEYWORD_ELSE},
 
-            {kKeywordNat, Token::Category::KEYWORD_NAT},
             {"0", Token::Category::CONSTANT_ZERO},
 
+            {kKeywordNat, Token::Category::KEYWORD_NAT},
             {"succ", Token::Category::KEYWORD_SUCC},
             {"pred", Token::Category::KEYWORD_PRED},
             {"iszero", Token::Category::KEYWORD_ISZERO},
-
-            {kLambdaInputSymbol, Token::Category::LAMBDA},
-            {"(", Token::Category::OPEN_PAREN},
-            {")", Token::Category::CLOSE_PAREN},
-            {".", Token::Category::LAMBDA_DOT},
-            {":", Token::Category::COLON},
-            {"->", Token::Category::ARROW},
         };
 
-        if (token_str_to_cat.find(token_strings_[current_token_]) !=
-            std::end(token_str_to_cat)) {
-            token = Token(token_str_to_cat[token_strings_[current_token_]]);
-        } else if (IsVariableName(token_strings_[current_token_])) {
-            token = Token(Token::Category::VARIABLE,
-                          token_strings_[current_token_]);
+        auto token_string = token_strings_[current_token_];
+
+        if (token_str_to_cat.find(token_string) != std::end(token_str_to_cat)) {
+            token = Token(token_str_to_cat[token_string]);
+        } else if (IsVariableName(token_string)) {
+            token = Token(Token::Category::VARIABLE, token_string);
         }
 
         ++current_token_;
@@ -176,20 +185,27 @@ class Lexer {
 std::ostream& operator<<(std::ostream& out, Token token) {
     std::unordered_map<Token::Category, std::string> token_to_str = {
         {Token::Category::LAMBDA, "λ"},
-        {Token::Category::KEYWORD_BOOL, "<Bool>"},
-        {Token::Category::KEYWORD_NAT, "<Nat>"},
-        {Token::Category::LAMBDA_DOT, "."},
+
+        {Token::Category::DOT, "."},
+        {Token::Category::EQUAL, "="},
         {Token::Category::OPEN_PAREN, "("},
         {Token::Category::CLOSE_PAREN, ")"},
+        {Token::Category::OPEN_BRACE, "{"},
+        {Token::Category::CLOSE_BRACE, "}"},
         {Token::Category::COLON, ":"},
         {Token::Category::ARROW, "->"},
 
         {Token::Category::CONSTANT_TRUE, "<true>"},
         {Token::Category::CONSTANT_FALSE, "<false>"},
+
+        {Token::Category::KEYWORD_BOOL, "<Bool>"},
         {Token::Category::KEYWORD_IF, "<if>"},
         {Token::Category::KEYWORD_THEN, "<then>"},
         {Token::Category::KEYWORD_ELSE, "<else>"},
 
+        {Token::Category::CONSTANT_ZERO, "0"},
+
+        {Token::Category::KEYWORD_NAT, "<Nat>"},
         {Token::Category::KEYWORD_SUCC, "succ"},
         {Token::Category::KEYWORD_PRED, "pred"},
         {Token::Category::KEYWORD_ISZERO, "iszero"},
@@ -1194,7 +1210,7 @@ class Parser {
 
             token = lexer_.NextToken();
 
-            if (token.GetCategory() == Token::Category::LAMBDA_DOT) {
+            if (token.GetCategory() == Token::Category::DOT) {
                 break;
             } else if (token.GetCategory() == Token::Category::CLOSE_PAREN) {
                 lexer_.PutBackToken();
@@ -1217,7 +1233,7 @@ class Parser {
     Token ParseDot() {
         auto token = lexer_.NextToken();
 
-        return (token.GetCategory() == Token::Category::LAMBDA_DOT)
+        return (token.GetCategory() == Token::Category::DOT)
                    ? token
                    : throw std::logic_error("Expected to parse a dot.");
     }
