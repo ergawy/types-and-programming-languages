@@ -58,7 +58,7 @@ using namespace utils::test;
 
 std::vector<TestData> kData = {
     // Valid tokens (non-variables):
-    TestData{"l . ( ) : -> { } =",
+    TestData{"l.():->{}=",
              {Token{Category::LAMBDA}, Token{Category::DOT},
               Token{Category::OPEN_PAREN}, Token{Category::CLOSE_PAREN},
               Token{Category::COLON}, Token{Category::ARROW},

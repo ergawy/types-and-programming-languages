@@ -146,7 +146,8 @@ class Lexer {
 
         while (in.get(c)) {
             // Check for one-character separators and surround them with spaces.
-            if (c == ':' || c == '.' || c == '(' || c == ')') {
+            if (c == ':' || c == '.' || c == '=' || c == '(' || c == ')' ||
+                c == '{' || c == '}') {
                 processed_stream << " " << c << " ";
             } else if (c == '-') {
                 // Check for the only two-character serparator '->' and surround
