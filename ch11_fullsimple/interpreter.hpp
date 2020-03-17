@@ -16,11 +16,12 @@
 namespace lexer {
 struct Token {
     enum class Category {
-        VARIABLE,
+        IDENTIFIER,
 
         LAMBDA,
 
         DOT,
+        COMMA,
         EQUAL,
         OPEN_PAREN,
         CLOSE_PAREN,
@@ -50,7 +51,7 @@ struct Token {
 
     Token(Category category = Category::MARKER_INVALID, std::string text = "")
         : category_(category),
-          text_(category == Category::VARIABLE ? text : "") {}
+          text_(category == Category::IDENTIFIER ? text : "") {}
 
     bool operator==(const Token& other) const {
         return category_ == other.category_ && text_ == other.text_;
@@ -96,6 +97,7 @@ class Lexer {
             {kLambdaInputSymbol, Token::Category::LAMBDA},
 
             {".", Token::Category::DOT},
+            {",", Token::Category::COMMA},
             {"=", Token::Category::EQUAL},
             {"(", Token::Category::OPEN_PAREN},
             {")", Token::Category::CLOSE_PAREN},
@@ -124,8 +126,8 @@ class Lexer {
 
         if (token_str_to_cat.find(token_string) != std::end(token_str_to_cat)) {
             token = Token(token_str_to_cat[token_string]);
-        } else if (IsVariableName(token_string)) {
-            token = Token(Token::Category::VARIABLE, token_string);
+        } else if (IsIdentifierName(token_string)) {
+            token = Token(Token::Category::IDENTIFIER, token_string);
         }
 
         ++current_token_;
@@ -146,8 +148,8 @@ class Lexer {
 
         while (in.get(c)) {
             // Check for one-character separators and surround them with spaces.
-            if (c == ':' || c == '.' || c == '=' || c == '(' || c == ')' ||
-                c == '{' || c == '}') {
+            if (c == ':' || c == ',' || c == '.' || c == '=' || c == '(' ||
+                c == ')' || c == '{' || c == '}') {
                 processed_stream << " " << c << " ";
             } else if (c == '-') {
                 // Check for the only two-character serparator '->' and surround
@@ -168,7 +170,7 @@ class Lexer {
         return processed_stream.str();
     }
 
-    bool IsVariableName(std::string token_text) {
+    bool IsIdentifierName(std::string token_text) {
         for (auto c : token_text) {
             if (!std::isalpha(c) && c != '_') {
                 return false;
@@ -188,6 +190,7 @@ std::ostream& operator<<(std::ostream& out, Token token) {
         {Token::Category::LAMBDA, "λ"},
 
         {Token::Category::DOT, "."},
+        {Token::Category::COMMA, ","},
         {Token::Category::EQUAL, "="},
         {Token::Category::OPEN_PAREN, "("},
         {Token::Category::CLOSE_PAREN, ")"},
@@ -219,7 +222,7 @@ std::ostream& operator<<(std::ostream& out, Token token) {
         out << token_to_str[token.GetCategory()];
     } else {
         switch (token.GetCategory()) {
-            case Token::Category::VARIABLE:
+            case Token::Category::IDENTIFIER:
                 out << token.GetText();
                 break;
 
@@ -269,7 +272,27 @@ class Type {
             return **result;
         }
 
-        type_pool.emplace_back(std::make_unique<Type>(lhs, rhs));
+        type_pool.emplace_back(std::unique_ptr<Type>(new Type(lhs, rhs)));
+
+        return *type_pool.back();
+    }
+
+    using RecordFields = std::vector<std::pair<std::string, Type&>>;
+
+    static Type& Record(RecordFields fields) {
+        static std::vector<std::unique_ptr<Type>> type_pool;
+
+        auto result = std::find_if(std::begin(type_pool), std::end(type_pool),
+                                   [&](const std::unique_ptr<Type>& type) {
+                                       return type->record_fields_ == fields;
+                                   });
+
+        if (result != std::end(type_pool)) {
+            return **result;
+        }
+
+        type_pool.emplace_back(
+            std::unique_ptr<Type>(new Type(std::move(fields))));
 
         return *type_pool.back();
     }
@@ -295,6 +318,8 @@ class Type {
             case TypeCategory::FUNCTION:
                 assert(lhs_ && rhs_ && other.lhs_ && other.rhs_);
                 return (*lhs_ == *other.lhs_) && (*rhs_ == *other.rhs_);
+            case TypeCategory::RECORD:
+                return record_fields_ == other.record_fields_;
         }
     }
 
@@ -312,6 +337,8 @@ class Type {
 
     bool IsFunction() const { return category_ == TypeCategory::FUNCTION; }
 
+    bool IsRecord() const { return category_ == TypeCategory::RECORD; }
+
     Type& FunctionLHS() const {
         if (!IsFunction()) {
             throw std::invalid_argument("Invalid function type.");
@@ -328,13 +355,17 @@ class Type {
         return *rhs_;
     }
 
+   private:
     Type(Type& lhs, Type& rhs)
         : lhs_(&lhs), rhs_(&rhs), category_(TypeCategory::FUNCTION) {}
 
-   private:
+    Type(RecordFields fields)
+        : record_fields_(std::move(fields)), category_(TypeCategory::RECORD) {}
+
     enum class TypeCategory {
         BASE,
         FUNCTION,
+        RECORD,
         ILL,
     };
 
@@ -354,6 +385,8 @@ class Type {
 
     Type* lhs_ = nullptr;
     Type* rhs_ = nullptr;
+
+    RecordFields record_fields_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Type& type) {
@@ -365,6 +398,19 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
         out << "(" << *type.lhs_ << " "
             << lexer::Token(lexer::Token::Category::ARROW) << " " << *type.rhs_
             << ")";
+    } else if (type.IsRecord()) {
+        out << "{";
+
+        for (int i = 0; i < type.record_fields_.size(); ++i) {
+            if (i > 0) {
+                out << ", ";
+            }
+
+            out << type.record_fields_[i].first << ":"
+                << type.record_fields_[i].second;
+        }
+
+        out << "}";
     } else {
         out << "Ⱦ";
     }
@@ -989,7 +1035,8 @@ class Parser {
                     term_stack.emplace_back(
                         Term::Lambda(lambda_arg_name, lambda_arg.second));
                 }
-            } else if (next_token.GetCategory() == Token::Category::VARIABLE) {
+            } else if (next_token.GetCategory() ==
+                       Token::Category::IDENTIFIER) {
                 auto bound_variable_it =
                     std::find(std::begin(bound_variables),
                               std::end(bound_variables), next_token.GetText());
@@ -1171,15 +1218,15 @@ class Parser {
     std::pair<std::string, Type&> ParseLambdaArg() {
         auto token = lexer_.NextToken();
 
-        if (token.GetCategory() != Token::Category::VARIABLE) {
-            throw std::logic_error("Expected to parse a variable.");
+        if (token.GetCategory() != Token::Category::IDENTIFIER) {
+            throw std::invalid_argument("Expected to parse a variable.");
         }
 
         auto arg_name = token.GetText();
         token = lexer_.NextToken();
 
         if (token.GetCategory() != Token::Category::COLON) {
-            throw std::logic_error("Expected to parse a ':'.");
+            throw std::invalid_argument("Expected to parse a ':'.");
         }
 
         return {arg_name, ParseType()};
@@ -1201,25 +1248,30 @@ class Parser {
                     Token::Category::CLOSE_PAREN) {
                     std::ostringstream error_ss;
                     error_ss << __LINE__ << ": Unexpected token: " << token;
-                    throw std::logic_error(error_ss.str());
+                    throw std::invalid_argument(error_ss.str());
                 }
+            } else if (token.GetCategory() == Token::Category::OPEN_BRACE) {
+                lexer_.PutBackToken();
+                parts.emplace_back(&ParseRecordType());
             } else {
                 std::ostringstream error_ss;
                 error_ss << __LINE__ << ": Unexpected token: " << token;
-                throw std::logic_error(error_ss.str());
+                throw std::invalid_argument(error_ss.str());
             }
 
             token = lexer_.NextToken();
 
             if (token.GetCategory() == Token::Category::DOT) {
                 break;
-            } else if (token.GetCategory() == Token::Category::CLOSE_PAREN) {
+            } else if (token.GetCategory() == Token::Category::CLOSE_PAREN ||
+                       token.GetCategory() == Token::Category::CLOSE_BRACE ||
+                       token.GetCategory() == Token::Category::COMMA) {
                 lexer_.PutBackToken();
                 break;
             } else if (token.GetCategory() != Token::Category::ARROW) {
                 std::ostringstream error_ss;
                 error_ss << __LINE__ << ": Unexpected token: " << token;
-                throw std::logic_error(error_ss.str());
+                throw std::invalid_argument(error_ss.str());
             }
         }
 
@@ -1231,12 +1283,58 @@ class Parser {
         return *parts[0];
     }
 
-    Token ParseDot() {
-        auto token = lexer_.NextToken();
+    Type& ParseRecordType() {
+        Token token = lexer_.NextToken();
 
-        return (token.GetCategory() == Token::Category::DOT)
-                   ? token
-                   : throw std::logic_error("Expected to parse a dot.");
+        if (token.GetCategory() != Token::Category::OPEN_BRACE) {
+            std::ostringstream error_ss;
+            error_ss << __LINE__ << ": Unexpected token: " << token;
+            throw std::invalid_argument(error_ss.str());
+        }
+
+        Type::RecordFields fields;
+        token = lexer_.NextToken();
+
+        while (true) {
+            if (token.GetCategory() != Token::Category::IDENTIFIER) {
+                std::ostringstream error_ss;
+                error_ss << __LINE__ << ": Unexpected token: " << token;
+                throw std::invalid_argument(error_ss.str());
+            }
+
+            std::string field_id = token.GetText();
+
+            token = lexer_.NextToken();
+
+            if (token.GetCategory() != Token::Category::COLON) {
+                std::ostringstream error_ss;
+                error_ss << __LINE__ << ": Unexpected token: " << token;
+                throw std::invalid_argument(error_ss.str());
+            }
+
+            Type& type = ParseType();
+            token = lexer_.NextToken();
+            fields.push_back({field_id, type});
+
+            if (token.GetCategory() == Token::Category::CLOSE_BRACE) {
+                break;
+            } else if (token.GetCategory() == Token::Category::COMMA) {
+                token = lexer_.NextToken();
+                continue;
+            } else {
+                std::ostringstream error_ss;
+                error_ss << __LINE__ << ": Unexpected token: " << token;
+                throw std::invalid_argument(error_ss.str());
+            }
+        }
+
+        if (fields.empty()) {
+            std::ostringstream error_ss;
+            error_ss << __LINE__ << ": Invalid record.";
+            throw std::invalid_argument(error_ss.str());
+        }
+
+        return Type::Record(std::move(fields));
     }
 
    private:

@@ -84,10 +84,11 @@ std::vector<TestData> kData = {
              }},
 
     // Valid tokens (variables):
-    TestData{"x y L test _",
-             {Token{Category::VARIABLE, "x"}, Token{Category::VARIABLE, "y"},
-              Token{Category::VARIABLE, "L"}, Token{Category::VARIABLE, "test"},
-              Token{Category::VARIABLE, "_"}}},
+    TestData{
+        "x y L test _",
+        {Token{Category::IDENTIFIER, "x"}, Token{Category::IDENTIFIER, "y"},
+         Token{Category::IDENTIFIER, "L"}, Token{Category::IDENTIFIER, "test"},
+         Token{Category::IDENTIFIER, "_"}}},
     // Invalid single-character tokens:
     TestData{
         "! @ # $ % ^ & * - + ? / < > ' \" \\ | [ ]  ",
@@ -941,6 +942,37 @@ void InitData() {
         Lambda("x",
                Type::Function(Type::Function(Type::Bool(), Type::Bool()),
                               Type::Function(Type::Bool(), Type::Bool())),
+               Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:{a:Bool, b:Nat}. x",
+        Lambda("x", Type::Record({{"a", Type::Bool()}, {"b", Type::Nat()}}),
+               Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:{a:Bool, b:{c:Nat}}. x",
+        Lambda("x",
+               Type::Record({{"a", Type::Bool()},
+                             {"b", Type::Record({{"c", Type::Nat()}})}}),
+               Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:{a:Bool->Nat, b:{c:Nat}}. x",
+        Lambda("x",
+               Type::Record({{"a", Type::Function(Type::Bool(), Type::Nat())},
+                             {"b", Type::Record({{"c", Type::Nat()}})}}),
+               Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "l x:{a:Bool->Nat->{d:Bool}, b:{c:Nat}}. x",
+        Lambda("x",
+               Type::Record(
+                   {{"a",
+                     Type::Function(
+                         Type::Bool(),
+                         Type::Function(Type::Nat(),
+                                        Type::Record({{"d", Type::Bool()}})))},
+                    {"b", Type::Record({{"c", Type::Nat()}})}}),
                Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{"true", Term::True()});
