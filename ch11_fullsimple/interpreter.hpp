@@ -1019,149 +1019,178 @@ class Parser {
 
         while ((next_token = lexer_.NextToken()).GetCategory() !=
                Token::Category::MARKER_END) {
-            if (next_token.GetCategory() == Token::Category::LAMBDA) {
-                auto lambda_arg = ParseLambdaArg();
-                auto lambda_arg_name = lambda_arg.first;
-                bound_variables.push_back(lambda_arg_name);
+            switch (next_token.GetCategory()) {
+                case Token::Category::LAMBDA: {
+                    auto lambda_arg = ParseLambdaArg();
+                    auto lambda_arg_name = lambda_arg.first;
+                    bound_variables.push_back(lambda_arg_name);
 
-                // If the current stack top is empty, use its slot for the
-                // lambda.
-                if (term_stack.back().IsEmpty()) {
-                    term_stack.back() =
-                        Term::Lambda(lambda_arg_name, lambda_arg.second);
-                } else {
-                    // Else, push a new term on the stack to start building the
-                    // lambda term.
-                    term_stack.emplace_back(
-                        Term::Lambda(lambda_arg_name, lambda_arg.second));
+                    // If the current stack top is empty, use its slot for the
+                    // lambda.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() =
+                            Term::Lambda(lambda_arg_name, lambda_arg.second);
+                    } else {
+                        // Else, push a new term on the stack to start building
+                        // the lambda term.
+                        term_stack.emplace_back(
+                            Term::Lambda(lambda_arg_name, lambda_arg.second));
+                    }
+                    break;
                 }
-            } else if (next_token.GetCategory() ==
-                       Token::Category::IDENTIFIER) {
-                auto bound_variable_it =
-                    std::find(std::begin(bound_variables),
-                              std::end(bound_variables), next_token.GetText());
-                int de_bruijn_idx = -1;
+                case Token::Category::IDENTIFIER: {
+                    auto bound_variable_it = std::find(
+                        std::begin(bound_variables), std::end(bound_variables),
+                        next_token.GetText());
+                    int de_bruijn_idx = -1;
 
-                if (bound_variable_it != std::end(bound_variables)) {
-                    de_bruijn_idx = std::distance(bound_variable_it,
-                                                  std::end(bound_variables)) -
-                                    1;
-                } else {
-                    // The naming context for free variables (ref: tapl,§6.1.2)
-                    // is chosen to be the ASCII code of a variable's name.
-                    //
-                    // NOTE: Only single-character variable names are currecntly
-                    // supported as free variables.
-                    if (next_token.GetText().length() != 1) {
-                        std::ostringstream error_ss;
-                        error_ss << "Unexpected token: " << next_token;
-                        throw std::invalid_argument(error_ss.str());
+                    if (bound_variable_it != std::end(bound_variables)) {
+                        de_bruijn_idx =
+                            std::distance(bound_variable_it,
+                                          std::end(bound_variables)) -
+                            1;
+                    } else {
+                        // The naming context for free variables (ref:
+                        // tapl,§6.1.2) is chosen to be the ASCII code of a
+                        // variable's name.
+                        //
+                        // NOTE: Only single-character variable names are
+                        // currecntly supported as free variables.
+                        if (next_token.GetText().length() != 1) {
+                            std::ostringstream error_ss;
+                            error_ss << "Unexpected token: " << next_token;
+                            throw std::invalid_argument(error_ss.str());
+                        }
+
+                        de_bruijn_idx =
+                            bound_variables.size() +
+                            (std::tolower(next_token.GetText()[0]) - 'a');
                     }
 
-                    de_bruijn_idx =
-                        bound_variables.size() +
-                        (std::tolower(next_token.GetText()[0]) - 'a');
+                    term_stack.back().Combine(
+                        Term::Variable(next_token.GetText(), de_bruijn_idx));
+                    break;
                 }
-
-                term_stack.back().Combine(
-                    Term::Variable(next_token.GetText(), de_bruijn_idx));
-            } else if (next_token.GetCategory() ==
-                       Token::Category::KEYWORD_IF) {
-                // If the current stack top is empty, use its slot for the
-                // if condition.
-                if (term_stack.back().IsEmpty()) {
-                    term_stack.back() = Term::If();
-                } else {
-                    // Else, push a new term on the stack to start building the
+                case Token::Category::KEYWORD_IF: {
+                    // If the current stack top is empty, use its slot for the
                     // if condition.
-                    term_stack.emplace_back(Term::If());
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::If();
+                    } else {
+                        // Else, push a new term on the stack to start building
+                        // the if condition.
+                        term_stack.emplace_back(Term::If());
+                    }
+
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
+                    ++balance_parens;
+                    break;
                 }
+                case Token::Category::KEYWORD_THEN: {
+                    UnwindStack(term_stack, stack_size_on_open_paren,
+                                bound_variables);
 
-                stack_size_on_open_paren.emplace_back(term_stack.size());
-                term_stack.emplace_back(Term());
-                ++balance_parens;
-            } else if (next_token.GetCategory() ==
-                       Token::Category::KEYWORD_THEN) {
-                UnwindStack(term_stack, stack_size_on_open_paren,
-                            bound_variables);
+                    --balance_parens;
 
-                --balance_parens;
+                    if (!term_stack.back().IsIf()) {
+                        throw std::invalid_argument("Unexpected 'then'");
+                    }
 
-                if (!term_stack.back().IsIf()) {
-                    throw std::invalid_argument("Unexpected 'then'");
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
+                    ++balance_parens;
+                    break;
                 }
+                case Token::Category::KEYWORD_ELSE: {
+                    UnwindStack(term_stack, stack_size_on_open_paren,
+                                bound_variables);
 
-                stack_size_on_open_paren.emplace_back(term_stack.size());
-                term_stack.emplace_back(Term());
-                ++balance_parens;
-            } else if (next_token.GetCategory() ==
-                       Token::Category::KEYWORD_ELSE) {
-                UnwindStack(term_stack, stack_size_on_open_paren,
-                            bound_variables);
+                    --balance_parens;
 
-                --balance_parens;
-
-                if (!term_stack.back().IsIf()) {
-                    throw std::invalid_argument("Unexpected 'else'");
+                    if (!term_stack.back().IsIf()) {
+                        throw std::invalid_argument("Unexpected 'else'");
+                    }
+                    break;
                 }
-            } else if (next_token.GetCategory() ==
-                       Token::Category::KEYWORD_SUCC) {
-                // If the current stack top is empty, use its slot for the
-                // succ term.
-                if (term_stack.back().IsEmpty()) {
-                    term_stack.back() = Term::Succ();
-                } else {
-                    // Else, push a new term on the stack to start building the
-                    // if condition.
-                    term_stack.emplace_back(Term::Succ());
+                case Token::Category::KEYWORD_SUCC: {
+                    // If the current stack top is empty, use its slot for
+                    // the succ term.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::Succ();
+                    } else {
+                        // Else, push a new term on the stack to start
+                        // building the if condition.
+                        term_stack.emplace_back(Term::Succ());
+                    }
+                    break;
                 }
-            } else if (next_token.GetCategory() ==
-                       Token::Category::KEYWORD_PRED) {
-                // If the current stack top is empty, use its slot for the
-                // pred term.
-                if (term_stack.back().IsEmpty()) {
-                    term_stack.back() = Term::Pred();
-                } else {
-                    // Else, push a new term on the stack to start building the
-                    // if condition.
-                    term_stack.emplace_back(Term::Pred());
+                case Token::Category::KEYWORD_PRED: {
+                    // If the current stack top is empty, use its slot for
+                    // the pred term.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::Pred();
+                    } else {
+                        // Else, push a new term on the stack to start
+                        // building the if condition.
+                        term_stack.emplace_back(Term::Pred());
+                    }
+                    break;
                 }
-            } else if (next_token.GetCategory() ==
-                       Token::Category::KEYWORD_ISZERO) {
-                // If the current stack top is empty, use its slot for the
-                // iszero term.
-                if (term_stack.back().IsEmpty()) {
-                    term_stack.back() = Term::IsZero();
-                } else {
-                    // Else, push a new term on the stack to start building the
-                    // if condition.
-                    term_stack.emplace_back(Term::IsZero());
+                case Token::Category::KEYWORD_ISZERO: {
+                    // If the current stack top is empty, use its slot for
+                    // the iszero term.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::IsZero();
+                    } else {
+                        // Else, push a new term on the stack to start
+                        // building the if condition.
+                        term_stack.emplace_back(Term::IsZero());
+                    }
+                    break;
                 }
-            } else if (next_token.GetCategory() ==
-                       Token::Category::OPEN_PAREN) {
-                stack_size_on_open_paren.emplace_back(term_stack.size());
-                term_stack.emplace_back(Term());
-                ++balance_parens;
-            } else if (next_token.GetCategory() ==
-                       Token::Category::CLOSE_PAREN) {
-                UnwindStack(term_stack, stack_size_on_open_paren,
-                            bound_variables);
+                case Token::Category::OPEN_PAREN: {
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
+                    ++balance_parens;
+                    break;
+                }
+                case Token::Category::CLOSE_PAREN: {
+                    UnwindStack(term_stack, stack_size_on_open_paren,
+                                bound_variables);
 
-                --balance_parens;
-            } else if (next_token.GetCategory() ==
-                       Token::Category::CONSTANT_TRUE) {
-                term_stack.back().Combine(Term::True());
-
-            } else if (next_token.GetCategory() ==
-                       Token::Category::CONSTANT_FALSE) {
-                term_stack.back().Combine(Term::False());
-            } else if (next_token.GetCategory() ==
-                       Token::Category::CONSTANT_ZERO) {
-                term_stack.back().Combine(Term::Zero());
-            } else {
-                std::ostringstream error_ss;
-                error_ss << "Unexpected token: " << next_token;
-                throw std::invalid_argument(error_ss.str());
+                    --balance_parens;
+                    break;
+                }
+                case Token::Category::CONSTANT_TRUE: {
+                    term_stack.back().Combine(Term::True());
+                    break;
+                }
+                case Token::Category::CONSTANT_FALSE: {
+                    term_stack.back().Combine(Term::False());
+                    break;
+                }
+                case Token::Category::CONSTANT_ZERO: {
+                    term_stack.back().Combine(Term::Zero());
+                    break;
+                }
+                case Token::Category::OPEN_BRACE: {
+                    // If the current stack top is empty, use its slot for
+                    // the record term.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::Record();
+                    } else {
+                        // Else, push a new term on the stack to start
+                        // building the if condition.
+                        term_stack.emplace_back(Term::Record());
+                    }
+                    break;
+                }
+                default: {
+                    std::ostringstream error_ss;
+                    error_ss << "Unexpected token: " << next_token;
+                    throw std::invalid_argument(error_ss.str());
+                }
             }
         }
 
