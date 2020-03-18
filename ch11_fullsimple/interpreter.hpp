@@ -46,7 +46,12 @@ struct Token {
         KEYWORD_ISZERO,
 
         MARKER_END,
-        MARKER_INVALID
+        MARKER_INVALID,
+    };
+
+    enum class IdentifieySubCategory {
+        VARIABLE,
+        RECORD_LABEL,
     };
 
     Token(Category category = Category::MARKER_INVALID, std::string text = "")
@@ -499,6 +504,13 @@ class Term {
         return result;
     }
 
+    static Term Record() {
+        Term result;
+        result.is_record_ = true;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -531,6 +543,8 @@ class Term {
 
     bool IsConstantZero() const { return is_zero_; }
 
+    bool IsRecord() const { return is_record_; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -549,6 +563,9 @@ class Term {
             return !unary_op_arg_;
         } else if (IsIsZero()) {
             return !unary_op_arg_;
+        } else if (IsRecord()) {
+            return record_labels_.size() == 0 ||
+                   record_labels_.size() != record_values_.size();
         }
 
         return true;
@@ -639,11 +656,27 @@ class Term {
             }
         } else if (IsTrue() || IsFalse() || IsConstantZero()) {
             throw std::invalid_argument("Trying to combine with a constant.");
+        } else if (IsRecord()) {
+            if (!IsRecordExpectingValue()) {
+                throw std::logic_error(
+                    "Trying to combine with a Record while it isn't expecting "
+                    "a value.");
+            }
+
+            record_values_.push_back(std::make_unique<Term>(std::move(term)));
         } else {
             *this = std::move(term);
         }
 
         return *this;
+    }
+
+    void AddRecordLabel(std::string label) {
+        if (!IsRecord()) {
+            throw std::logic_error("Expected a Record.");
+        }
+
+        record_labels_.push_back(label);
     }
 
     /*
@@ -849,6 +882,11 @@ class Term {
             return true;
         }
 
+        if (IsRecord() && other.IsRecord()) {
+            return record_labels_ == record_labels_ &&
+                   record_values_ == record_values_;
+        }
+
         return false;
     }
 
@@ -890,6 +928,21 @@ class Term {
             out << unary_op_arg_->ASTString(indentation + 2);
         } else if (IsConstantZero()) {
             out << prefix << "0";
+        } else if (IsRecord()) {
+            out << prefix << "{\n";
+
+            for (int i = 0; i < record_labels_.size(); ++i) {
+                out << prefix;
+
+                if (i > 0) {
+                    out << ", ";
+                }
+
+                out << record_labels_[i] << " =\n"
+                    << record_values_[i]->ASTString(indentation + 2) << "\n";
+            }
+
+            out << prefix << "}";
         }
 
         return out.str();
@@ -928,6 +981,28 @@ class Term {
         throw std::logic_error(error_ss.str());
     }
 
+    bool IsRecordExpectingLabel() const {
+        if (!IsRecord()) {
+            throw std::logic_error("Expected a Record.");
+        }
+
+        int diff = record_labels_.size() - record_values_.size();
+        assert(diff == 0 || diff == 1);
+
+        return diff == 0;
+    }
+
+    bool IsRecordExpectingValue() const {
+        if (!IsRecord()) {
+            throw std::logic_error("Expected a Record.");
+        }
+
+        int diff = record_labels_.size() - record_values_.size();
+        assert(diff == 0 || diff == 1);
+
+        return diff == 1;
+    }
+
     bool is_complete_lambda_ = false;
 
    private:
@@ -960,6 +1035,10 @@ class Term {
     std::unique_ptr<Term> unary_op_arg_{};
 
     bool is_zero_ = false;
+
+    std::vector<std::string> record_labels_{};
+    std::vector<std::unique_ptr<Term>> record_values_{};
+    bool is_record_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -988,6 +1067,18 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
         out << "succ (" << *term.unary_op_arg_ << ")";
     } else if (term.IsConstantZero()) {
         out << "0";
+    } else if (term.IsRecord()) {
+        out << "{";
+
+        for (int i = 0; i < term.record_values_.size(); ++i) {
+            if (i > 0) {
+                out << ", ";
+            }
+
+            out << term.record_labels_[i] << "=" << *term.record_values_[i];
+        }
+
+        out << "}";
     } else {
         out << "<ERROR>";
     }
@@ -1036,41 +1127,62 @@ class Parser {
                         term_stack.emplace_back(
                             Term::Lambda(lambda_arg_name, lambda_arg.second));
                     }
+
                     break;
                 }
-                case Token::Category::IDENTIFIER: {
-                    auto bound_variable_it = std::find(
-                        std::begin(bound_variables), std::end(bound_variables),
-                        next_token.GetText());
-                    int de_bruijn_idx = -1;
 
-                    if (bound_variable_it != std::end(bound_variables)) {
-                        de_bruijn_idx =
-                            std::distance(bound_variable_it,
-                                          std::end(bound_variables)) -
-                            1;
-                    } else {
-                        // The naming context for free variables (ref:
-                        // tapl,§6.1.2) is chosen to be the ASCII code of a
-                        // variable's name.
-                        //
-                        // NOTE: Only single-character variable names are
-                        // currecntly supported as free variables.
-                        if (next_token.GetText().length() != 1) {
-                            std::ostringstream error_ss;
-                            error_ss << "Unexpected token: " << next_token;
-                            throw std::invalid_argument(error_ss.str());
+                case Token::Category::IDENTIFIER: {
+                    switch (CalculateIdentifierSubCategoryFromContext(
+                        next_token, term_stack)) {
+                        case Token::IdentifieySubCategory::RECORD_LABEL: {
+                            term_stack.back().AddRecordLabel(
+                                next_token.GetText());
+                            break;
                         }
 
-                        de_bruijn_idx =
-                            bound_variables.size() +
-                            (std::tolower(next_token.GetText()[0]) - 'a');
+                        case Token::IdentifieySubCategory::VARIABLE: {
+                            auto bound_variable_it =
+                                std::find(std::begin(bound_variables),
+                                          std::end(bound_variables),
+                                          next_token.GetText());
+                            int de_bruijn_idx = -1;
+
+                            if (bound_variable_it !=
+                                std::end(bound_variables)) {
+                                de_bruijn_idx =
+                                    std::distance(bound_variable_it,
+                                                  std::end(bound_variables)) -
+                                    1;
+                            } else {
+                                // The naming context for free variables (ref:
+                                // tapl,§6.1.2) is chosen to be the ASCII code
+                                // of a variable's name.
+                                //
+                                // NOTE: Only single-character variable names
+                                // are currecntly supported as free variables.
+                                if (next_token.GetText().length() != 1) {
+                                    std::ostringstream error_ss;
+                                    error_ss << "Unexpected token: "
+                                             << next_token;
+                                    throw std::invalid_argument(error_ss.str());
+                                }
+
+                                de_bruijn_idx =
+                                    bound_variables.size() +
+                                    (std::tolower(next_token.GetText()[0]) -
+                                     'a');
+                            }
+
+                            term_stack.back().Combine(Term::Variable(
+                                next_token.GetText(), de_bruijn_idx));
+
+                            break;
+                        }
                     }
 
-                    term_stack.back().Combine(
-                        Term::Variable(next_token.GetText(), de_bruijn_idx));
                     break;
                 }
+
                 case Token::Category::KEYWORD_IF: {
                     // If the current stack top is empty, use its slot for the
                     // if condition.
@@ -1085,8 +1197,10 @@ class Parser {
                     stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
+
                     break;
                 }
+
                 case Token::Category::KEYWORD_THEN: {
                     UnwindStack(term_stack, stack_size_on_open_paren,
                                 bound_variables);
@@ -1100,8 +1214,10 @@ class Parser {
                     stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
+
                     break;
                 }
+
                 case Token::Category::KEYWORD_ELSE: {
                     UnwindStack(term_stack, stack_size_on_open_paren,
                                 bound_variables);
@@ -1111,8 +1227,10 @@ class Parser {
                     if (!term_stack.back().IsIf()) {
                         throw std::invalid_argument("Unexpected 'else'");
                     }
+
                     break;
                 }
+
                 case Token::Category::KEYWORD_SUCC: {
                     // If the current stack top is empty, use its slot for
                     // the succ term.
@@ -1123,8 +1241,10 @@ class Parser {
                         // building the if condition.
                         term_stack.emplace_back(Term::Succ());
                     }
+
                     break;
                 }
+
                 case Token::Category::KEYWORD_PRED: {
                     // If the current stack top is empty, use its slot for
                     // the pred term.
@@ -1135,8 +1255,10 @@ class Parser {
                         // building the if condition.
                         term_stack.emplace_back(Term::Pred());
                     }
+
                     break;
                 }
+
                 case Token::Category::KEYWORD_ISZERO: {
                     // If the current stack top is empty, use its slot for
                     // the iszero term.
@@ -1147,33 +1269,45 @@ class Parser {
                         // building the if condition.
                         term_stack.emplace_back(Term::IsZero());
                     }
+
                     break;
                 }
+
                 case Token::Category::OPEN_PAREN: {
                     stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
+
                     break;
                 }
+
                 case Token::Category::CLOSE_PAREN: {
                     UnwindStack(term_stack, stack_size_on_open_paren,
                                 bound_variables);
 
                     --balance_parens;
+
                     break;
                 }
+
                 case Token::Category::CONSTANT_TRUE: {
                     term_stack.back().Combine(Term::True());
+
                     break;
                 }
+
                 case Token::Category::CONSTANT_FALSE: {
                     term_stack.back().Combine(Term::False());
+
                     break;
                 }
+
                 case Token::Category::CONSTANT_ZERO: {
                     term_stack.back().Combine(Term::Zero());
+
                     break;
                 }
+
                 case Token::Category::OPEN_BRACE: {
                     // If the current stack top is empty, use its slot for
                     // the record term.
@@ -1184,11 +1318,41 @@ class Parser {
                         // building the if condition.
                         term_stack.emplace_back(Term::Record());
                     }
+
                     break;
                 }
+
+                case Token::Category::EQUAL: {
+                    if (!term_stack.back().IsRecord() ||
+                        !term_stack.back().IsRecordExpectingValue()) {
+                        throw std::invalid_argument("Unexpected =");
+                    }
+
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
+                    ++balance_parens;
+
+                    break;
+                }
+
+                case Token::Category::COMMA:
+                case Token::Category::CLOSE_BRACE: {
+                    UnwindStack(term_stack, stack_size_on_open_paren,
+                                bound_variables);
+
+                    --balance_parens;
+
+                    if (!term_stack.back().IsRecord()) {
+                        std::cout << term_stack.back() << "\n";
+                        throw std::invalid_argument("Unexpected }");
+                    }
+
+                    break;
+                }
+
                 default: {
                     std::ostringstream error_ss;
-                    error_ss << "Unexpected token: " << next_token;
+                    error_ss << __LINE__ << " Unexpected token: " << next_token;
                     throw std::invalid_argument(error_ss.str());
                 }
             }
@@ -1364,6 +1528,18 @@ class Parser {
         }
 
         return Type::Record(std::move(fields));
+    }
+
+    Token::IdentifieySubCategory CalculateIdentifierSubCategoryFromContext(
+        Token token, const std::vector<Term>& term_stack) {
+        assert(token.GetCategory() == Token::Category::IDENTIFIER);
+
+        if (term_stack.back().IsRecord() &&
+            term_stack.back().IsRecordExpectingLabel()) {
+            return Token::IdentifieySubCategory::RECORD_LABEL;
+        }
+
+        return Token::IdentifieySubCategory::VARIABLE;
     }
 
    private:

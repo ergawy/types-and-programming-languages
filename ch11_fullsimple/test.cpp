@@ -211,6 +211,17 @@ Term IsZero(Term&& arg) {
     return term;
 }
 
+// Term Record(std::vector<std::string> labels, std::vector<Term&&> values) {
+//    auto term = Term::Record();
+
+//    for (int i = 0; i < labels.size(); ++i) {
+//        term.AddRecordLabel(labels[i]);
+//        term.Combine(std::move(values[i]));
+//    }
+
+//    return term;
+//}
+
 }  // namespace
 
 namespace parser {
@@ -1083,6 +1094,24 @@ void InitData() {
         Term::Application(
             LambdaUP("x", Type::Nat(), Pred(Pred(Term::Variable("x", 0)))),
             std::make_unique<Term>(Succ(Succ(Succ(Term::Zero())))))});
+
+    auto record = Term::Record();
+    record.AddRecordLabel("x");
+    record.Combine(Term::Zero());
+    kData.emplace_back(TestData{"{x=0}", std::move(record)});
+
+    auto record2 = Term::Record();
+    record2.AddRecordLabel("x");
+    record2.Combine(Succ(Term::Zero()));
+    kData.emplace_back(TestData{"{x=succ 0}", std::move(record2)});
+
+    auto record3 = Term::Record();
+    record3.AddRecordLabel("x");
+    record3.Combine(Succ(Term::Zero()));
+    record3.AddRecordLabel("y");
+    record3.Combine(Lambda("z", Type::Bool(), Term::Variable("x", 0)));
+    kData.emplace_back(
+        TestData{"{x=succ 0, y=l z:Bool. z}", std::move(record3)});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
