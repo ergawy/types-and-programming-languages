@@ -431,7 +431,7 @@ class Term {
         Term result;
         result.lambda_arg_name_ = arg_name;
         result.lambda_arg_type_ = &arg_type;
-        result.is_lambda_ = true;
+        result.category_ = Category::LAMBDA;
 
         return result;
     }
@@ -440,7 +440,7 @@ class Term {
         Term result;
         result.variable_name_ = var_name;
         result.de_bruijn_idx_ = de_bruijn_idx;
-        result.is_variable_ = true;
+        result.category_ = Category::VARIABLE;
 
         return result;
     }
@@ -448,7 +448,7 @@ class Term {
     static Term Application(std::unique_ptr<Term> lhs,
                             std::unique_ptr<Term> rhs) {
         Term result;
-        result.is_application_ = true;
+        result.category_ = Category::APPLICATION;
         result.application_lhs_ = std::move(lhs);
         result.application_rhs_ = std::move(rhs);
 
@@ -457,56 +457,65 @@ class Term {
 
     static Term If() {
         Term result;
-        result.is_if_ = true;
+        result.category_ = Category::IF;
 
         return result;
     }
 
     static Term True() {
         Term result;
-        result.is_true_ = true;
+        result.category_ = Category::TRUE;
 
         return result;
     }
 
     static Term False() {
         Term result;
-        result.is_false_ = true;
+        result.category_ = Category::FALSE;
 
         return result;
     }
 
     static Term Succ() {
         Term result;
-        result.is_succ_ = true;
+        result.category_ = Category::SUCC;
 
         return result;
     }
 
     static Term Pred() {
         Term result;
-        result.is_pred_ = true;
+        result.category_ = Category::PRED;
 
         return result;
     }
 
     static Term IsZero() {
         Term result;
-        result.is_iszero_ = true;
+        result.category_ = Category::ISZERO;
 
         return result;
     }
 
     static Term Zero() {
         Term result;
-        result.is_zero_ = true;
+        result.category_ = Category::ZERO;
 
         return result;
     }
 
     static Term Record() {
         Term result;
-        result.is_record_ = true;
+        result.category_ = Category::RECORD;
+
+        return result;
+    }
+
+    static Term Projection(std::unique_ptr<Term> value, std::string label) {
+        Term result;
+        result.projection_record_ = std::move(value);
+        result.projection_label_ = label;
+        result.category_ = Category::PROJECTION;
 
         return result;
     }
@@ -521,29 +530,31 @@ class Term {
 
     ~Term() = default;
 
-    bool IsLambda() const { return is_lambda_; }
+    bool IsLambda() const { return category_ == Category::LAMBDA; }
 
-    void MarkLambdaAsComplete() { is_complete_lambda_ = true; }
+    void MarkAsComplete() { is_complete_ = true; }
 
-    bool IsVariable() const { return is_variable_; }
+    bool IsVariable() const { return category_ == Category::VARIABLE; }
 
-    bool IsApplication() const { return is_application_; }
+    bool IsApplication() const { return category_ == Category::APPLICATION; }
 
-    bool IsIf() const { return is_if_; }
+    bool IsIf() const { return category_ == Category::IF; }
 
-    bool IsTrue() const { return is_true_; }
+    bool IsTrue() const { return category_ == Category::TRUE; }
 
-    bool IsFalse() const { return is_false_; }
+    bool IsFalse() const { return category_ == Category::FALSE; }
 
-    bool IsSucc() const { return is_succ_; }
+    bool IsSucc() const { return category_ == Category::SUCC; }
 
-    bool IsPred() const { return is_pred_; }
+    bool IsPred() const { return category_ == Category::PRED; }
 
-    bool IsIsZero() const { return is_iszero_; }
+    bool IsIsZero() const { return category_ == Category::ISZERO; }
 
-    bool IsConstantZero() const { return is_zero_; }
+    bool IsConstantZero() const { return category_ == Category::ZERO; }
 
-    bool IsRecord() const { return is_record_; }
+    bool IsRecord() const { return category_ == Category::RECORD; }
+
+    bool IsProjection() const { return category_ == Category::PROJECTION; }
 
     bool IsInvalid() const {
         if (IsLambda()) {
@@ -566,6 +577,8 @@ class Term {
         } else if (IsRecord()) {
             return record_labels_.size() == 0 ||
                    record_labels_.size() != record_values_.size();
+        } else if (IsProjection()) {
+            return !projection_record_;
         }
 
         return true;
@@ -587,15 +600,14 @@ class Term {
                 // If the lambda body was completely parsed, then combining this
                 // term and the argument term means applying this lambda to the
                 // argument.
-                if (is_complete_lambda_) {
+                if (is_complete_) {
                     *this =
                         Application(std::make_unique<Term>(std::move(*this)),
                                     std::make_unique<Term>(std::move(term)));
 
-                    is_lambda_ = false;
                     lambda_body_ = nullptr;
                     lambda_arg_name_ = "";
-                    is_complete_lambda_ = false;
+                    is_complete_ = false;
                 } else {
                     lambda_body_->Combine(std::move(term));
                 }
@@ -606,7 +618,6 @@ class Term {
             *this = Application(std::make_unique<Term>(std::move(*this)),
                                 std::make_unique<Term>(std::move(term)));
 
-            is_variable_ = false;
             variable_name_ = "";
         } else if (IsApplication()) {
             *this = Application(std::make_unique<Term>(std::move(*this)),
@@ -627,7 +638,6 @@ class Term {
                         Application(std::make_unique<Term>(std::move(*this)),
                                     std::make_unique<Term>(std::move(term)));
 
-                    is_if_ = false;
                     if_condition_ = nullptr;
                     if_then_ = nullptr;
                     if_else_ = nullptr;
@@ -657,6 +667,11 @@ class Term {
         } else if (IsTrue() || IsFalse() || IsConstantZero()) {
             throw std::invalid_argument("Trying to combine with a constant.");
         } else if (IsRecord()) {
+            if (is_complete_) {
+                throw std::logic_error(
+                    "Trying to combine with a complete Record.");
+            }
+
             if (!IsRecordExpectingValue()) {
                 throw std::logic_error(
                     "Trying to combine with a Record while it isn't expecting "
@@ -664,11 +679,21 @@ class Term {
             }
 
             record_values_.push_back(std::make_unique<Term>(std::move(term)));
+        } else if (IsProjection()) {
+            *this = Application(std::make_unique<Term>(std::move(*this)),
+                                std::make_unique<Term>(std::move(term)));
+
+            projection_label_ = "";
         } else {
             *this = std::move(term);
         }
 
         return *this;
+    }
+
+    void ConvertToProjection(std::string label) {
+        *this = Projection(std::make_unique<Term>(std::move(*this)), label);
+        category_ = Category::PROJECTION;
     }
 
     void AddRecordLabel(std::string label) {
@@ -832,7 +857,7 @@ class Term {
 
     Term& UnaryOpArg() const {
         if (!IsSucc() && !IsPred() && !IsIsZero()) {
-            throw std::invalid_argument("Invalid term.");
+            throw std::invalid_argument("yyyInvalid term.");
         }
 
         return *unary_op_arg_;
@@ -887,6 +912,11 @@ class Term {
                    record_values_ == record_values_;
         }
 
+        if (IsProjection() && other.IsProjection()) {
+            return projection_label_ == other.projection_label_ &&
+                   *projection_record_ == *other.projection_record_;
+        }
+
         return false;
     }
 
@@ -895,6 +925,7 @@ class Term {
     std::string ASTString(int indentation = 0) const {
         std::ostringstream out;
         std::string prefix = std::string(indentation, '-');
+        std::string prefix_extra = std::string(indentation + 2, '-');
 
         if (IsLambda()) {
             out << prefix << "λ " << lambda_arg_name_ << ":"
@@ -932,17 +963,17 @@ class Term {
             out << prefix << "{\n";
 
             for (int i = 0; i < record_labels_.size(); ++i) {
-                out << prefix;
+                out << prefix << "=\n";
 
-                if (i > 0) {
-                    out << ", ";
-                }
-
-                out << record_labels_[i] << " =\n"
-                    << record_values_[i]->ASTString(indentation + 2) << "\n";
+                out << prefix_extra << record_labels_[i] << "\n";
+                out << record_values_[i]->ASTString(indentation + 2) << "\n";
             }
 
             out << prefix << "}";
+        } else if (IsProjection()) {
+            out << prefix << ".\n";
+            out << projection_record_->ASTString(indentation + 2) << "\n";
+            out << prefix_extra << projection_label_;
         }
 
         return out.str();
@@ -1003,42 +1034,49 @@ class Term {
         return diff == 1;
     }
 
-    bool is_complete_lambda_ = false;
+    bool is_complete_ = false;
 
    private:
-    bool is_lambda_ = false;
+    enum class Category {
+        EMPTY,
+        LAMBDA,
+        VARIABLE,
+        APPLICATION,
+        IF,
+        TRUE,
+        FALSE,
+        SUCC,
+        PRED,
+        ISZERO,
+        ZERO,
+        RECORD,
+        PROJECTION,
+    };
+
+    Category category_ = Category::EMPTY;
+
     std::string lambda_arg_name_ = "";
     Type* lambda_arg_type_ = nullptr;
     std::unique_ptr<Term> lambda_body_{};
     // Marks whether parsing for the body of the lambda term is finished or not.
 
-    bool is_variable_ = false;
     std::string variable_name_ = "";
     int de_bruijn_idx_ = -1;
 
-    bool is_application_ = false;
     std::unique_ptr<Term> application_lhs_{};
     std::unique_ptr<Term> application_rhs_{};
 
-    bool is_if_ = false;
     std::unique_ptr<Term> if_condition_{};
     std::unique_ptr<Term> if_then_{};
     std::unique_ptr<Term> if_else_{};
 
-    bool is_true_ = false;
-
-    bool is_false_ = false;
-
-    bool is_succ_ = false;
-    bool is_pred_ = false;
-    bool is_iszero_ = false;
     std::unique_ptr<Term> unary_op_arg_{};
-
-    bool is_zero_ = false;
 
     std::vector<std::string> record_labels_{};
     std::vector<std::unique_ptr<Term>> record_values_{};
-    bool is_record_ = false;
+
+    std::unique_ptr<Term> projection_record_{};
+    std::string projection_label_ = "";
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -1079,6 +1117,8 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
         }
 
         out << "}";
+    } else if (term.IsProjection()) {
+        out << *term.projection_record_ << "." << term.projection_label_;
     } else {
         out << "<ERROR>";
     }
@@ -1343,9 +1383,30 @@ class Parser {
                     --balance_parens;
 
                     if (!term_stack.back().IsRecord()) {
-                        std::cout << term_stack.back() << "\n";
                         throw std::invalid_argument("Unexpected }");
                     }
+
+                    if (next_token.GetCategory() ==
+                        Token::Category::CLOSE_BRACE) {
+                        term_stack.back().MarkAsComplete();
+                    }
+
+                    break;
+                }
+
+                case Token::Category::DOT: {
+                    if (term_stack.empty() || term_stack.back().IsInvalid()) {
+                        throw std::invalid_argument("Unexpected '.'");
+                    }
+
+                    Token new_token = lexer_.NextToken();
+
+                    if (new_token.GetCategory() !=
+                        Token::Category::IDENTIFIER) {
+                        throw std::invalid_argument("Expected a label.");
+                    }
+
+                    term_stack.back().ConvertToProjection(new_token.GetText());
 
                     break;
                 }
@@ -1368,7 +1429,7 @@ class Parser {
         }
 
         if (term_stack.back().IsInvalid()) {
-            throw std::invalid_argument("Invalid term.");
+            throw std::invalid_argument("iiiiInvalid term.");
         }
 
         return std::move(term_stack.back());
@@ -1380,10 +1441,10 @@ class Parser {
         while (!term_stack.empty() && !stack_size_on_open_paren.empty() &&
                term_stack.size() > stack_size_on_open_paren.back()) {
             if (term_stack.back().IsLambda() &&
-                !term_stack.back().is_complete_lambda_) {
+                !term_stack.back().is_complete_) {
                 // Mark the λ as complete so that terms to its right
                 // won't be combined to its body.
-                term_stack.back().MarkLambdaAsComplete();
+                term_stack.back().MarkAsComplete();
                 // λ's variable is no longer part of the current binding
                 // context, therefore pop it.
                 bound_variables.pop_back();

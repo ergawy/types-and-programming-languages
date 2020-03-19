@@ -211,16 +211,16 @@ Term IsZero(Term&& arg) {
     return term;
 }
 
-// Term Record(std::vector<std::string> labels, std::vector<Term&&> values) {
-//    auto term = Term::Record();
+Term Record(std::vector<std::string> labels, std::vector<Term> values) {
+    auto term = Term::Record();
 
-//    for (int i = 0; i < labels.size(); ++i) {
-//        term.AddRecordLabel(labels[i]);
-//        term.Combine(std::move(values[i]));
-//    }
+    for (int i = 0; i < labels.size(); ++i) {
+        term.AddRecordLabel(labels[i]);
+        term.Combine(std::move(values[i]));
+    }
 
-//    return term;
-//}
+    return term;
+}
 
 }  // namespace
 
@@ -1113,6 +1113,9 @@ void InitData() {
     kData.emplace_back(
         TestData{"{x=succ 0, y=l z:Bool. z}", std::move(record3)});
 
+    kData.emplace_back(
+        TestData{"x.y", Term::Projection(VariableUP("x", 23), "y")});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1144,6 +1147,7 @@ void InitData() {
     kData.emplace_back(TestData{"succ pred 0 pred 0"});
     kData.emplace_back(TestData{"succ pred 0 presd"});
     kData.emplace_back(TestData{"succ succ 1"});
+    kData.emplace_back(TestData{"{x=succ 0, y=l z:Bool. z} a:Nat"});
 }
 
 void Run() {
