@@ -16,6 +16,8 @@ t ::=
     succ t
     pred t
     iszero t
+    {l_i=t_i} for i in 1..n
+    t.l
 ```
 
 ### Values
@@ -26,6 +28,7 @@ v ::=
     l x:T. t
     true
     false
+    {l_i=v_i} for i in 1..n
     nv
     
 nv ::=
@@ -39,6 +42,7 @@ nv ::=
 T ::=
     Bool
     Nat
+    {l_i:T_i} for i in 1..n
     T -> T
 ```
 
