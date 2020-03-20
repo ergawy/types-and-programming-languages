@@ -360,6 +360,14 @@ class Type {
         return *rhs_;
     }
 
+    const RecordFields& GetRecordFields() const {
+        if (!IsRecord()) {
+            throw std::invalid_argument("Invalid record type.");
+        }
+
+        return record_fields_;
+    }
+
    private:
     Type(Type& lhs, Type& rhs)
         : lhs_(&lhs), rhs_(&rhs), category_(TypeCategory::FUNCTION) {}
@@ -511,9 +519,9 @@ class Term {
         return result;
     }
 
-    static Term Projection(std::unique_ptr<Term> value, std::string label) {
+    static Term Projection(std::unique_ptr<Term> term, std::string label) {
         Term result;
-        result.projection_record_ = std::move(value);
+        result.projection_term_ = std::move(term);
         result.projection_label_ = label;
         result.category_ = Category::PROJECTION;
 
@@ -578,7 +586,7 @@ class Term {
             return record_labels_.size() == 0 ||
                    record_labels_.size() != record_terms_.size();
         } else if (IsProjection()) {
-            return !projection_record_;
+            return !projection_term_;
         }
 
         return true;
@@ -871,6 +879,10 @@ class Term {
         return record_terms_;
     }
 
+    Term& ProjectionTerm() const { return *projection_term_; }
+
+    std::string ProjectionLabel() const { return projection_label_; }
+
     bool operator==(const Term& other) const {
         if (IsLambda() && other.IsLambda()) {
             return LambdaArgType() == other.LambdaArgType() &&
@@ -922,7 +934,7 @@ class Term {
 
         if (IsProjection() && other.IsProjection()) {
             return projection_label_ == other.projection_label_ &&
-                   *projection_record_ == *other.projection_record_;
+                   *projection_term_ == *other.projection_term_;
         }
 
         return false;
@@ -980,7 +992,7 @@ class Term {
             out << prefix << "}";
         } else if (IsProjection()) {
             out << prefix << ".\n";
-            out << projection_record_->ASTString(indentation + 2) << "\n";
+            out << projection_term_->ASTString(indentation + 2) << "\n";
             out << prefix_extra << projection_label_;
         }
 
@@ -1083,7 +1095,7 @@ class Term {
     std::vector<std::string> record_labels_{};
     std::vector<std::unique_ptr<Term>> record_terms_{};
 
-    std::unique_ptr<Term> projection_record_{};
+    std::unique_ptr<Term> projection_term_{};
     std::string projection_label_ = "";
 };
 
@@ -1126,7 +1138,7 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
 
         out << "}";
     } else if (term.IsProjection()) {
-        out << *term.projection_record_ << "." << term.projection_label_;
+        out << *term.projection_term_ << "." << term.projection_label_;
     } else {
         out << "<ERROR>";
     }
@@ -1691,6 +1703,17 @@ class TypeChecker {
 
             if (record_type_fields.size() == term.RecordLabels().size()) {
                 res = &Type::Record(record_type_fields);
+            }
+        } else if (term.IsProjection()) {
+            Type& term_type = TypeOf(term.ProjectionTerm());
+
+            if (term_type.IsRecord()) {
+                for (auto& field : term_type.GetRecordFields()) {
+                    if (field.first == term.ProjectionLabel()) {
+                        res = &field.second;
+                        break;
+                    }
+                }
             }
         }
 

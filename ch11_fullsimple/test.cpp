@@ -1377,6 +1377,12 @@ void InitData() {
 
     kData.emplace_back(
         TestData{"{x=if true then 0 else iszero 0}", Type::IllTyped()});
+
+    kData.emplace_back(TestData{"{x=0}.x", Type::Nat()});
+
+    kData.emplace_back(TestData{"{x=0}.y", Type::IllTyped()});
+
+    kData.emplace_back(TestData{"{x=0, y=true}.y", Type::Bool()});
 }
 
 void Run() {
