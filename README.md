@@ -19,7 +19,7 @@ Untyped Arithmetic Expressions | [ch04_arith](ch04_arith) | :heavy_check_mark: L
 The Untyped Lmabda Calculus | [ch07_untyped](ch07_untyped) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests
 Typed Arithmetic Expressions | [ch08_tyarith](ch08_tyarith) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter & Type Checker + Tests
 Simply Typed Lambda Calculus | [ch10_simplebool](ch10_simplebool) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests <br> :heavy_check_mark: Interpreter + Tests
-Typed Lambda Calculus (with various extensions) | [ch11_fullsimple](ch11_fullsimple) | __Natural numbers (Nat) type support__ <br> :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests <br> :construction: |
+Typed Lambda Calculus (with various extensions) | [ch11_fullsimple](ch11_fullsimple) | __Natural numbers (Nat) type support__ <br> :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests <br> __Records and Projections__ <br> :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests <br> :construction: |
 
 ### Usage
 
