@@ -1116,6 +1116,15 @@ void InitData() {
     kData.emplace_back(
         TestData{"x.y", Term::Projection(VariableUP("x", 23), "y")});
 
+    auto record4 = Term::Record();
+    record4.AddRecordLabel("x");
+    record4.Combine(Succ(Term::Zero()));
+    record4.AddRecordLabel("y");
+    record4.Combine(Lambda("z", Type::Bool(), Term::Variable("x", 0)));
+    kData.emplace_back(TestData{
+        "{x=succ 0, y=l z:Bool. z}.x",
+        Term::Projection(std::make_unique<Term>(std::move(record4)), "x")});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1148,6 +1157,8 @@ void InitData() {
     kData.emplace_back(TestData{"succ pred 0 presd"});
     kData.emplace_back(TestData{"succ succ 1"});
     kData.emplace_back(TestData{"{x=succ 0, y=l z:Bool. z} a:Nat"});
+    kData.emplace_back(TestData{"{x=succ 0, y=l z:Bool. z}."});
+    kData.emplace_back(TestData{".z"});
 }
 
 void Run() {
