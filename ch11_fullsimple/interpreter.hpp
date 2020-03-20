@@ -1025,6 +1025,15 @@ class Term {
             return std::move(Term::Pred().Combine(unary_op_arg_->Clone()));
         } else if (IsIsZero()) {
             return std::move(Term::IsZero().Combine(unary_op_arg_->Clone()));
+        } else if (IsRecord()) {
+            Term result = Term::Record();
+
+            for (int i = 0; i < record_labels_.size(); ++i) {
+                result.AddRecordLabel(record_labels_[i]);
+                result.Combine(record_terms_[i]->Clone());
+            }
+
+            return std::move(result);
         }
 
         std::ostringstream error_ss;
@@ -1120,9 +1129,9 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsSucc()) {
         out << "succ (" << *term.unary_op_arg_ << ")";
     } else if (term.IsPred()) {
-        out << "succ (" << *term.unary_op_arg_ << ")";
+        out << "pred (" << *term.unary_op_arg_ << ")";
     } else if (term.IsIsZero()) {
-        out << "succ (" << *term.unary_op_arg_ << ")";
+        out << "iszero (" << *term.unary_op_arg_ << ")";
     } else if (term.IsConstantZero()) {
         out << "0";
     } else if (term.IsRecord()) {
@@ -1833,6 +1842,29 @@ class Interpreter {
             } else {
                 Eval1(iszero_arg);
             }
+        } else if (term.IsProjection()) {
+            Term& projection_term = term.ProjectionTerm();
+
+            if (IsRecordValue(projection_term)) {
+                for (int i = 0; i < projection_term.RecordLabels().size();
+                     ++i) {
+                    if (projection_term.RecordLabels()[i] ==
+                        term.ProjectionLabel()) {
+                        std::swap(term, *projection_term.RecordTerms()[i]);
+
+                        break;
+                    }
+                }
+            } else {
+                Eval1(projection_term);
+            }
+        } else if (term.IsRecord()) {
+            for (auto& record_term : term.RecordTerms()) {
+                if (!IsValue(*record_term)) {
+                    Eval1(*record_term);
+                    break;
+                }
+            }
         } else {
             throw std::invalid_argument("No applicable rule.");
         }
@@ -1843,9 +1875,23 @@ class Interpreter {
                (term.IsSucc() && IsNatValue(term.UnaryOpArg()));
     }
 
+    bool IsRecordValue(const Term& term) {
+        if (!term.IsRecord()) {
+            return false;
+        }
+
+        for (auto& record_term : term.RecordTerms()) {
+            if (!IsValue(*record_term)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     bool IsValue(const Term& term) {
         return term.IsLambda() || term.IsVariable() || term.IsTrue() ||
-               term.IsFalse() || IsNatValue(term);
+               term.IsFalse() || IsNatValue(term) || IsRecordValue(term);
     }
 };
 }  // namespace interpreter
