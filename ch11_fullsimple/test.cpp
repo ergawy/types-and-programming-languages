@@ -1158,6 +1158,8 @@ void InitData() {
     kData.emplace_back(TestData{"succ succ 1"});
     kData.emplace_back(TestData{"{x=succ 0, y=l z:Bool. z} a:Nat"});
     kData.emplace_back(TestData{"{x=succ 0, y=l z:Bool. z}."});
+    kData.emplace_back(TestData{"{x=succ 0, y=}"});
+    kData.emplace_back(TestData{"{x=succ 0, true}"});
     kData.emplace_back(TestData{".z"});
 }
 
@@ -1357,6 +1359,24 @@ void InitData() {
 
     kData.emplace_back(
         TestData{"(l x:Nat. pred pred x) succ succ succ 0", Type::Nat()});
+
+    kData.emplace_back(TestData{"{x=0}", Type::Record({{"x", Type::Nat()}})});
+
+    kData.emplace_back(
+        TestData{"{x=0, y=true}",
+                 Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}})});
+
+    kData.emplace_back(TestData{
+        "{x=0, y=true, z=l x:Bool. x}",
+        Type::Record({{"x", Type::Nat()},
+                      {"y", Type::Bool()},
+                      {"z", Type::Function(Type::Bool(), Type::Bool())}})});
+
+    kData.emplace_back(TestData{"{x=if true then 0 else pred (succ succ 0)}",
+                                Type::Record({{"x", Type::Nat()}})});
+
+    kData.emplace_back(
+        TestData{"{x=if true then 0 else iszero 0}", Type::IllTyped()});
 }
 
 void Run() {

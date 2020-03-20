@@ -330,7 +330,7 @@ class Type {
 
     bool operator!=(const Type& other) const { return !(*this == other); }
 
-    bool IsIllTyped() const { return category_ == TypeCategory::BASE; }
+    bool IsIllTyped() const { return category_ == TypeCategory::ILL; }
 
     bool IsBool() const {
         return category_ == TypeCategory::BASE && base_type_ == BaseType::BOOL;
@@ -576,7 +576,7 @@ class Term {
             return !unary_op_arg_;
         } else if (IsRecord()) {
             return record_labels_.size() == 0 ||
-                   record_labels_.size() != record_values_.size();
+                   record_labels_.size() != record_terms_.size();
         } else if (IsProjection()) {
             return !projection_record_;
         }
@@ -672,13 +672,13 @@ class Term {
                     "Trying to combine with a complete Record.");
             }
 
-            if (!IsRecordExpectingValue()) {
+            if (!IsRecordExpectingTerm()) {
                 throw std::logic_error(
                     "Trying to combine with a Record while it isn't expecting "
                     "a value.");
             }
 
-            record_values_.push_back(std::make_unique<Term>(std::move(term)));
+            record_terms_.push_back(std::make_unique<Term>(std::move(term)));
         } else if (IsProjection()) {
             *this = Application(std::make_unique<Term>(std::move(*this)),
                                 std::make_unique<Term>(std::move(term)));
@@ -863,6 +863,14 @@ class Term {
         return *unary_op_arg_;
     }
 
+    const std::vector<std::string>& RecordLabels() const {
+        return record_labels_;
+    }
+
+    const std::vector<std::unique_ptr<Term>>& RecordTerms() const {
+        return record_terms_;
+    }
+
     bool operator==(const Term& other) const {
         if (IsLambda() && other.IsLambda()) {
             return LambdaArgType() == other.LambdaArgType() &&
@@ -909,7 +917,7 @@ class Term {
 
         if (IsRecord() && other.IsRecord()) {
             return record_labels_ == record_labels_ &&
-                   record_values_ == record_values_;
+                   record_terms_ == record_terms_;
         }
 
         if (IsProjection() && other.IsProjection()) {
@@ -966,7 +974,7 @@ class Term {
                 out << prefix << "=\n";
 
                 out << prefix_extra << record_labels_[i] << "\n";
-                out << record_values_[i]->ASTString(indentation + 2) << "\n";
+                out << record_terms_[i]->ASTString(indentation + 2) << "\n";
             }
 
             out << prefix << "}";
@@ -1017,18 +1025,18 @@ class Term {
             throw std::logic_error("Expected a Record.");
         }
 
-        int diff = record_labels_.size() - record_values_.size();
+        int diff = record_labels_.size() - record_terms_.size();
         assert(diff == 0 || diff == 1);
 
         return diff == 0;
     }
 
-    bool IsRecordExpectingValue() const {
+    bool IsRecordExpectingTerm() const {
         if (!IsRecord()) {
             throw std::logic_error("Expected a Record.");
         }
 
-        int diff = record_labels_.size() - record_values_.size();
+        int diff = record_labels_.size() - record_terms_.size();
         assert(diff == 0 || diff == 1);
 
         return diff == 1;
@@ -1073,7 +1081,7 @@ class Term {
     std::unique_ptr<Term> unary_op_arg_{};
 
     std::vector<std::string> record_labels_{};
-    std::vector<std::unique_ptr<Term>> record_values_{};
+    std::vector<std::unique_ptr<Term>> record_terms_{};
 
     std::unique_ptr<Term> projection_record_{};
     std::string projection_label_ = "";
@@ -1108,12 +1116,12 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsRecord()) {
         out << "{";
 
-        for (int i = 0; i < term.record_values_.size(); ++i) {
+        for (int i = 0; i < term.record_terms_.size(); ++i) {
             if (i > 0) {
                 out << ", ";
             }
 
-            out << term.record_labels_[i] << "=" << *term.record_values_[i];
+            out << term.record_labels_[i] << "=" << *term.record_terms_[i];
         }
 
         out << "}";
@@ -1364,7 +1372,7 @@ class Parser {
 
                 case Token::Category::EQUAL: {
                     if (!term_stack.back().IsRecord() ||
-                        !term_stack.back().IsRecordExpectingValue()) {
+                        !term_stack.back().IsRecordExpectingTerm()) {
                         throw std::invalid_argument("Unexpected =");
                     }
 
@@ -1666,6 +1674,23 @@ class TypeChecker {
             if (idx >= 0 && idx < ctx.size() &&
                 ctx[idx].first == term.VariableName()) {
                 res = ctx[idx].second;
+            }
+        } else if (term.IsRecord()) {
+            Type::RecordFields record_type_fields;
+
+            for (int i = 0; i < term.RecordLabels().size(); ++i) {
+                Type& field_type = TypeOf(*term.RecordTerms()[i]);
+
+                if (field_type.IsIllTyped()) {
+                    break;
+                }
+
+                record_type_fields.emplace_back(term.RecordLabels()[i],
+                                                field_type);
+            }
+
+            if (record_type_fields.size() == term.RecordLabels().size()) {
+                res = &Type::Record(record_type_fields);
             }
         }
 
