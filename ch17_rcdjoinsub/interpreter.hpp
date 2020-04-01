@@ -94,6 +94,7 @@ class Lexer {
         Token token;
 
         if (current_token_ == token_strings_.size()) {
+            current_token_ = token_strings_.size() + 1;
             token = Token(Token::Category::MARKER_END);
             return token;
         }
@@ -777,6 +778,8 @@ class Term {
                 walk(binding_context_size, *term.unary_op_arg_);
             } else if (term.IsIsZero()) {
                 walk(binding_context_size, *term.unary_op_arg_);
+            } else if (term.IsProjection()) {
+                walk(binding_context_size, *term.projection_term_);
             }
         };
 
@@ -1242,8 +1245,24 @@ class Parser {
                                      'a');
                             }
 
-                            term_stack.back().Combine(Term::Variable(
-                                next_token.GetText(), de_bruijn_idx));
+                            auto peeked_token = lexer_.NextToken();
+                            lexer_.PutBackToken();
+
+                            if (peeked_token.GetCategory() ==
+                                Token::Category::DOT) {
+                                // Add a term to the stack that will potentially
+                                // be turned into a projection.
+                                if (term_stack.back().IsEmpty()) {
+                                    term_stack.back() = Term::Variable(
+                                        next_token.GetText(), de_bruijn_idx);
+                                } else {
+                                    term_stack.emplace_back(Term::Variable(
+                                        next_token.GetText(), de_bruijn_idx));
+                                }
+                            } else {
+                                term_stack.back().Combine(Term::Variable(
+                                    next_token.GetText(), de_bruijn_idx));
+                            }
 
                             break;
                         }
@@ -1436,7 +1455,6 @@ class Parser {
                     }
 
                     term_stack.back().ConvertToProjection(new_token.GetText());
-
                     break;
                 }
 

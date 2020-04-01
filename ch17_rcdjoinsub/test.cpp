@@ -1115,6 +1115,15 @@ void InitData() {
         "{x=succ 0, y=l z:Bool. z}.x",
         Term::Projection(std::make_unique<Term>(std::move(record4)), "x")});
 
+    auto record5 = Term::Record();
+    record5.AddRecordLabel("x");
+    record5.Combine(Term::Zero());
+    kData.emplace_back(TestData{
+        "(l r:{x:Nat}. r.x) {x=succ 0}",
+        Term::Application(LambdaUP("r", Type::Record({{"x", Type::Nat()}}),
+                                   Term::Projection(VariableUP("r", 0), "x")),
+                          std::make_unique<Term>(std::move(record5)))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1593,6 +1602,9 @@ void InitData() {
     kData.emplace_back(
         TestData{"{x=pred succ 0, y=if true then false else true}.y",
                  {"false", Type::Bool()}});
+
+    kData.emplace_back(
+        TestData{"(l r:{x:Nat}. r.x) {x=succ 0}", {"1", Type::Nat()}});
 }
 
 void Run() {
