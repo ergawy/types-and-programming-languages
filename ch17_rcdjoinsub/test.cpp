@@ -1606,6 +1606,10 @@ void InitData() {
 
     kData.emplace_back(TestData{"(l r:{x:Nat}. succ r.x) {x=succ 0, y=true}",
                                 {"2", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"(l r:{a:{x:Nat}}. r.a.x) {a={x=succ 0, y=true}, b=false}",
+                 {"1", Type::Nat()}});
 }
 
 void Run() {
