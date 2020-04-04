@@ -1704,7 +1704,8 @@ class TypeChecker {
             Type& lhs_type = TypeOf(ctx, term.ApplicationLHS());
             Type& rhs_type = TypeOf(ctx, term.ApplicationRHS());
 
-            if (lhs_type.IsFunction() && lhs_type.FunctionLHS() == rhs_type) {
+            if (lhs_type.IsFunction() &&
+                IsSubtype(rhs_type, lhs_type.FunctionLHS())) {
                 res = &lhs_type.FunctionRHS();
             }
         } else if (term.IsVariable()) {
@@ -1718,7 +1719,7 @@ class TypeChecker {
             Type::RecordFields record_type_fields;
 
             for (int i = 0; i < term.RecordLabels().size(); ++i) {
-                Type& field_type = TypeOf(*term.RecordTerms()[i]);
+                Type& field_type = TypeOf(ctx, *term.RecordTerms()[i]);
 
                 if (field_type.IsIllTyped()) {
                     break;
@@ -1732,7 +1733,7 @@ class TypeChecker {
                 res = &Type::Record(record_type_fields);
             }
         } else if (term.IsProjection()) {
-            Type& term_type = TypeOf(term.ProjectionTerm());
+            Type& term_type = TypeOf(ctx, term.ProjectionTerm());
 
             if (term_type.IsRecord()) {
                 for (auto& field : term_type.GetRecordFields()) {
@@ -1802,8 +1803,11 @@ class Interpreter {
 
    public:
     std::pair<std::string, type_checker::Type&> Interpret(Term& program) {
-        Eval(program);
         type_checker::Type& type = type_checker::TypeChecker().TypeOf(program);
+
+        if (!type.IsIllTyped()) {
+            Eval(program);
+        }
 
         std::ostringstream ss;
         ss << program;

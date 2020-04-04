@@ -1546,18 +1546,21 @@ void InitData() {
     kData.emplace_back(TestData{"0", {"0", Type::Nat()}});
 
     kData.emplace_back(
-        TestData{"if false then true else 0", {"0", Type::Nat()}});
+        TestData{"if false then true else 0",
+                 {"if (false) then (true) else (0)", Type::IllTyped()}});
 
     kData.emplace_back(
-        TestData{"if false then true else succ 0", {"1", Type::Nat()}});
+        TestData{"if false then true else succ 0",
+                 {"if (false) then (true) else (succ (0))", Type::IllTyped()}});
+
+    kData.emplace_back(TestData{
+        "if false then true else succ succ 0",
+        {"if (false) then (true) else (succ (succ (0)))", Type::IllTyped()}});
+
+    kData.emplace_back(TestData{"(l x:Nat. x) succ 0", {"1", Type::Nat()}});
 
     kData.emplace_back(
-        TestData{"if false then true else succ succ 0", {"2", Type::Nat()}});
-
-    kData.emplace_back(TestData{"if false then true else succ succ succ 0",
-                                {"3", Type::Nat()}});
-
-    kData.emplace_back(TestData{"(l x:Bool. x) x", {"x", Type::IllTyped()}});
+        TestData{"(l x:Nat. succ x) succ 0", {"2", Type::Nat()}});
 
     kData.emplace_back(TestData{"(l x:Bool. x) true", {"true", Type::Bool()}});
 
@@ -1566,19 +1569,14 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) if false then true else l x:Bool. x",
-        {"{l x : Bool. x}", Type::Function(Type::Bool(), Type::Bool())}});
+        {"({l x : Bool. x} <- if (false) then (true) else ({l x : Bool. x}))",
+         Type::IllTyped()}});
 
     kData.emplace_back(TestData{"(l x:Bool. if x then true else false) true",
                                 {"true", Type::Bool()}});
 
     kData.emplace_back(TestData{"(l x:Bool. if x then true else false) false",
                                 {"false", Type::Bool()}});
-
-    kData.emplace_back(TestData{
-        "(l x:Bool. if x then l x:Bool. x else l y:Bool->Bool. true) false",
-        {"{l y : (Bool -> Bool). true}",
-         Type::Function(Type::Function(Type::Bool(), Type::Bool()),
-                        Type::Bool())}});
 
     kData.emplace_back(
         TestData{"(l x:Nat. succ succ x) 0", {"2", Type::Nat()}});
@@ -1605,6 +1603,9 @@ void InitData() {
 
     kData.emplace_back(
         TestData{"(l r:{x:Nat}. r.x) {x=succ 0}", {"1", Type::Nat()}});
+
+    kData.emplace_back(TestData{"(l r:{x:Nat}. succ r.x) {x=succ 0, y=true}",
+                                {"2", Type::Nat()}});
 }
 
 void Run() {
