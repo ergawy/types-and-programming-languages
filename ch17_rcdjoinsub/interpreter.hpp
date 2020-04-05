@@ -77,6 +77,7 @@ std::ostream& operator<<(std::ostream& out, Token token);
 
 namespace {
 const std::string kLambdaInputSymbol = "l";
+const std::string kKeywordTop = "Top";
 const std::string kKeywordBool = "Bool";
 const std::string kKeywordNat = "Nat";
 }  // namespace
@@ -247,6 +248,13 @@ class Type {
     friend std::ostream& operator<<(std::ostream&, const Type&);
 
    public:
+    static Type& Top() {
+        static Type type;
+        type.category_ = TypeCategory::TOP;
+
+        return type;
+    }
+
     static Type& IllTyped() {
         static Type type;
 
@@ -283,7 +291,7 @@ class Type {
         return *type_pool.back();
     }
 
-    using RecordFields = std::vector<std::pair<std::string, Type&>>;
+    using RecordFields = std::unordered_map<std::string, Type&>;
 
     static Type& Record(RecordFields fields) {
         static std::vector<std::unique_ptr<Type>> type_pool;
@@ -317,6 +325,8 @@ class Type {
         }
 
         switch (category_) {
+            case TypeCategory::TOP:
+                return other.category_ == TypeCategory::TOP;
             case TypeCategory::ILL:
                 return other.category_ == TypeCategory::ILL;
             case TypeCategory::BASE:
@@ -332,6 +342,8 @@ class Type {
     bool operator!=(const Type& other) const { return !(*this == other); }
 
     bool IsIllTyped() const { return category_ == TypeCategory::ILL; }
+
+    bool IsTop() const { return category_ == TypeCategory::TOP; }
 
     bool IsBool() const {
         return category_ == TypeCategory::BASE && base_type_ == BaseType::BOOL;
@@ -380,6 +392,7 @@ class Type {
         BASE,
         FUNCTION,
         RECORD,
+        TOP,
         ILL,
     };
 
@@ -404,7 +417,9 @@ class Type {
 };
 
 std::ostream& operator<<(std::ostream& out, const Type& type) {
-    if (type.IsBool()) {
+    if (type.IsTop()) {
+        out << lexer::kKeywordTop;
+    } else if (type.IsBool()) {
         out << lexer::kKeywordBool;
     } else if (type.IsNat()) {
         out << lexer::kKeywordNat;
@@ -415,13 +430,14 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
     } else if (type.IsRecord()) {
         out << "{";
 
-        for (int i = 0; i < type.record_fields_.size(); ++i) {
-            if (i > 0) {
+        bool first = true;
+        for (auto& field : type.record_fields_) {
+            if (!first) {
                 out << ", ";
             }
 
-            out << type.record_fields_[i].first << ":"
-                << type.record_fields_[i].second;
+            first = false;
+            out << field.first << ":" << field.second;
         }
 
         out << "}";
@@ -1615,7 +1631,7 @@ class Parser {
 
             Type& type = ParseType();
             token = lexer_.NextToken();
-            fields.push_back({field_id, type});
+            fields.insert({field_id, type});
 
             if (token.GetCategory() == Token::Category::CLOSE_BRACE) {
                 break;
@@ -1668,6 +1684,160 @@ class TypeChecker {
         return TypeOf(ctx, term);
     }
 
+    /**
+     * Determines if \p s is a sub-type of \p t.
+     *
+     * @return true of \p s is sub-type of \p t, false otherwise.
+     */
+    bool IsSubtype(const Type& s, const Type& t) {
+        if (s == t) {
+            return true;
+        }
+
+        if (s.IsRecord() && t.IsRecord()) {
+            for (const auto& t_field : t.GetRecordFields()) {
+                bool found_t_field_in_s = false;
+
+                for (const auto& s_field : s.GetRecordFields()) {
+                    if (t_field.first == s_field.first &&
+                        IsSubtype(s_field.second, t_field.second)) {
+                        found_t_field_in_s = true;
+                        break;
+                    }
+                }
+
+                if (!found_t_field_in_s) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (s.IsFunction() && t.IsFunction()) {
+            return IsSubtype(t.FunctionLHS(), s.FunctionLHS()) &&
+                   IsSubtype(s.FunctionRHS(), t.FunctionRHS());
+        }
+
+        return false;
+    }
+
+    /**
+     * Calculates the join (least common supertype) of \p s and \p t.
+     *
+     * For example, if s == {x:Nat, y:Bool}, and t == {x:Nat, z:Bool}, then the
+     * method returns {x:Nat}.
+     */
+    Type& Join(Type& s, Type& t) {
+        if (s == t) {
+            return s;
+        }
+
+        if (s.IsFunction() && t.IsFunction()) {
+            Type& s1 = s.FunctionLHS();
+            Type& s2 = s.FunctionRHS();
+            Type& t1 = t.FunctionLHS();
+            Type& t2 = t.FunctionRHS();
+
+            Type& m1 = Meet(s1, t1);
+            Type& j2 = Join(s2, t2);
+
+            if (m1.IsIllTyped()) {
+                return Type::IllTyped();
+            }
+
+            return Type::Function(m1, j2);
+        }
+
+        if (s.IsRecord() && t.IsRecord()) {
+            Type::RecordFields join_fields;
+
+            for (auto& s_field : s.GetRecordFields()) {
+                auto t_iter = t.GetRecordFields().find(s_field.first);
+
+                if (t_iter != std::end(t.GetRecordFields())) {
+                    join_fields.insert(
+                        {s_field.first, Join(s_field.second, t_iter->second)});
+                }
+            }
+
+            return Type::Record(join_fields);
+        }
+
+        // Top is the last resort supertype of all types.
+        return Type::Top();
+    }
+
+    /**
+     * Calculates the join (greatest common subtype) of \p s and \p t.
+     *
+     * For example, if s == {x:Nat, y:Bool}, and t == {x:Nat, z:Bool}, then the
+     * method returns {x:Nat, y:Bool, z:Bool}.
+
+     */
+    Type& Meet(Type& s, Type& t) {
+        if (s == t) {
+            return s;
+        }
+
+        if (s.IsTop()) {
+            return t;
+        }
+
+        if (t.IsTop()) {
+            return s;
+        }
+
+        if (s.IsFunction() && t.IsFunction()) {
+            Type& s1 = s.FunctionLHS();
+            Type& s2 = s.FunctionRHS();
+            Type& t1 = t.FunctionLHS();
+            Type& t2 = t.FunctionRHS();
+
+            Type& j1 = Join(s1, t1);
+            Type& m2 = Meet(s2, t2);
+
+            if (m2.IsIllTyped()) {
+                return Type::IllTyped();
+            }
+
+            return Type::Function(j1, m2);
+        }
+
+        if (s.IsRecord() && t.IsRecord()) {
+            Type::RecordFields meet_fields;
+
+            for (auto& s_field : s.GetRecordFields()) {
+                auto t_iter = t.GetRecordFields().find(s_field.first);
+
+                if (t_iter != std::end(t.GetRecordFields())) {
+                    Type& m = Meet(s_field.second, t_iter->second);
+
+                    if (m.IsIllTyped()) {
+                        return Type::IllTyped();
+                    }
+
+                    meet_fields.insert({s_field.first, m});
+                } else {
+                    meet_fields.insert({s_field.first, s_field.second});
+                }
+            }
+
+            for (auto& t_field : t.GetRecordFields()) {
+                auto s_iter = s.GetRecordFields().find(t_field.first);
+
+                if (s_iter == std::end(s.GetRecordFields())) {
+                    meet_fields.insert({t_field.first, t_field.second});
+                }
+            }
+
+            return Type::Record(meet_fields);
+        }
+
+        return Type::IllTyped();
+    }
+
+   private:
     Type& TypeOf(const Context& ctx, const Term& term) {
         Type* res = &Type::IllTyped();
 
@@ -1725,8 +1895,7 @@ class TypeChecker {
                     break;
                 }
 
-                record_type_fields.emplace_back(term.RecordLabels()[i],
-                                                field_type);
+                record_type_fields.insert({term.RecordLabels()[i], field_type});
             }
 
             if (record_type_fields.size() == term.RecordLabels().size()) {
@@ -1748,45 +1917,6 @@ class TypeChecker {
         return *res;
     }
 
-    /**
-     * Determines if \p s is a sub-type of \p t.
-     *
-     * @return true of \p s is sub-type of \p t, false otherwise.
-     */
-    bool IsSubtype(const Type& s, const Type& t) {
-        if (s == t) {
-            return true;
-        }
-
-        if (s.IsRecord() && t.IsRecord()) {
-            for (const auto& t_field : t.GetRecordFields()) {
-                bool found_t_field_in_s = false;
-
-                for (const auto& s_field : s.GetRecordFields()) {
-                    if (t_field.first == s_field.first &&
-                        IsSubtype(s_field.second, t_field.second)) {
-                        found_t_field_in_s = true;
-                        break;
-                    }
-                }
-
-                if (!found_t_field_in_s) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        if (s.IsFunction() && t.IsFunction()) {
-            return IsSubtype(t.FunctionLHS(), s.FunctionLHS()) &&
-                   IsSubtype(s.FunctionRHS(), t.FunctionRHS());
-        }
-
-        return false;
-    }
-
-   private:
     Context AddBinding(const Context& current_ctx, std::string var_name,
                        Type& type) {
         Context new_ctx = current_ctx;

@@ -1445,9 +1445,126 @@ void InitSubtypingData() {
         false});
 }
 
+struct JoinTestData {
+    Type& s_;
+    Type& t_;
+    Type& expected_join_type_;
+};
+
+std::vector<JoinTestData> kJoinData{};
+
+void InitJoinData() {
+    kJoinData.emplace_back(
+        JoinTestData{Type::Bool(), Type::Bool(), Type::Bool()});
+
+    kJoinData.emplace_back(
+        JoinTestData{Type::Bool(), Type::Nat(), Type::Top()});
+
+    {
+        Type& s = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type& t = Type::Record({{"x", Type::Nat()}});
+        Type& j = t;
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type& s = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type& t = Type::Record({{"x", Type::Nat()}, {"z", Type::Nat()}});
+        Type& j = Type::Record({{"x", Type::Nat()}});
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type& s1 = Type::Bool();
+        Type& s2 = Type::Bool();
+
+        Type& t1 = Type::Bool();
+        Type& t2 = Type::Bool();
+
+        Type& s = Type::Function(s1, s2);
+        Type& t = Type::Function(t1, t2);
+        Type& j = Type::Function(t1, t2);
+
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type& s2 = Type::Bool();
+
+        Type& t1 = Type::Bool();
+        Type& t2 = Type::Bool();
+
+        Type& s = Type::Function(s1, s2);
+        Type& t = Type::Function(t1, t2);
+        Type& j = Type::IllTyped();
+
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type& s2 = Type::Bool();
+
+        Type& t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
+        Type& t2 = Type::Bool();
+
+        Type& j1 = Type::Record(
+            {{"x", Type::Nat()}, {"y", Type::Bool()}, {"z", Type::Bool()}});
+
+        Type& s = Type::Function(s1, s2);
+        Type& t = Type::Function(t1, t2);
+        Type& j = Type::Function(j1, t2);
+
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type& s2 = Type::Bool();
+
+        Type& t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
+        Type& t2 = Type::Nat();
+
+        Type& j1 = Type::Record(
+            {{"x", Type::Nat()}, {"y", Type::Bool()}, {"z", Type::Bool()}});
+
+        Type& s = Type::Function(s1, s2);
+        Type& t = Type::Function(t1, t2);
+        Type& j = Type::Function(j1, Type::Top());
+
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type& s2 = s1;
+
+        Type& t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
+        Type& t2 = t1;
+
+        Type& j1 = Type::Record(
+            {{"x", Type::Nat()}, {"y", Type::Bool()}, {"z", Type::Bool()}});
+        Type& j2 = Type::Record({{"x", Type::Nat()}});
+
+        Type& s = Type::Function(s1, s2);
+        Type& t = Type::Function(t1, t2);
+        Type& j = Type::Function(j1, j2);
+
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+}
+
 void Run() {
     InitData();
-    std::cout << color::kYellow << "[Type Checker] Running " << kData.size()
+    InitSubtypingData();
+    InitJoinData();
+
+    size_t total_num_tests =
+        kData.size() + kSubtypingData.size() + kJoinData.size();
+
+    // Test type checking.
+    std::cout << color::kYellow << "[Type Checker] Running " << total_num_tests
               << " tests...\n"
               << color::kReset;
     int num_failed = 0;
@@ -1491,9 +1608,9 @@ void Run() {
         }
     }
 
-    InitSubtypingData();
     TypeChecker type_checker;
 
+    // Test subtyping.
     for (const auto& test : kSubtypingData) {
         if (type_checker.IsSubtype(test.s_, test.t_) !=
             test.expected_is_subtype_) {
@@ -1510,7 +1627,25 @@ void Run() {
         }
     }
 
-    size_t total_num_tests = kData.size() + kSubtypingData.size();
+    // Test join (least common supertype) calculation.
+    for (const auto& test : kJoinData) {
+        Type& actual_join_type = type_checker.Join(test.s_, test.t_);
+
+        if (actual_join_type != test.expected_join_type_) {
+            std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
+
+            std::cout << "  S: " << test.s_ << ", T: " << test.t_ << "\n";
+
+            std::cout << color::kGreen
+                      << "  Exptected S v T : " << color::kReset
+                      << test.expected_join_type_ << "\n";
+
+            std::cout << color::kRed << "  Actual S v T : " << color::kReset
+                      << actual_join_type << "\n";
+            ++num_failed;
+        }
+    }
+
     std::cout << color::kYellow << "Results: " << color::kReset
               << (total_num_tests - num_failed) << " out of " << total_num_tests
               << " tests passed.\n";
