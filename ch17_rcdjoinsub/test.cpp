@@ -1374,8 +1374,8 @@ void InitData() {
     kData.emplace_back(TestData{"{x=if true then 0 else pred (succ succ 0)}",
                                 Type::Record({{"x", Type::Nat()}})});
 
-    kData.emplace_back(
-        TestData{"{x=if true then 0 else iszero 0}", Type::IllTyped()});
+    kData.emplace_back(TestData{"{x=if true then 0 else iszero 0}",
+                                Type::Record({{"x", Type::Top()}})});
 
     kData.emplace_back(TestData{"{x=0}.x", Type::Nat()});
 
@@ -1681,16 +1681,13 @@ void InitData() {
     kData.emplace_back(TestData{"0", {"0", Type::Nat()}});
 
     kData.emplace_back(
-        TestData{"if false then true else 0",
-                 {"if (false) then (true) else (0)", Type::IllTyped()}});
+        TestData{"if false then true else 0", {"0", Type::Top()}});
 
     kData.emplace_back(
-        TestData{"if false then true else succ 0",
-                 {"if (false) then (true) else (succ (0))", Type::IllTyped()}});
+        TestData{"if false then true else succ 0", {"1", Type::Top()}});
 
-    kData.emplace_back(TestData{
-        "if false then true else succ succ 0",
-        {"if (false) then (true) else (succ (succ (0)))", Type::IllTyped()}});
+    kData.emplace_back(
+        TestData{"if false then true else succ succ 0", {"2", Type::Top()}});
 
     kData.emplace_back(TestData{"(l x:Nat. x) succ 0", {"1", Type::Nat()}});
 

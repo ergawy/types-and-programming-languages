@@ -1848,10 +1848,8 @@ class TypeChecker {
         } else if (term.IsIf()) {
             if (TypeOf(ctx, term.IfCondition()) == Type::Bool()) {
                 Type& then_type = TypeOf(ctx, term.IfThen());
-
-                if (then_type == TypeOf(ctx, term.IfElse())) {
-                    res = &then_type;
-                }
+                Type& else_type = TypeOf(ctx, term.IfElse());
+                return Join(then_type, else_type);
             }
         } else if (term.IsSucc() || term.IsPred()) {
             auto& subterm_type = TypeOf(ctx, term.UnaryOpArg());
