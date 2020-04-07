@@ -556,6 +556,14 @@ class Term {
         return result;
     }
 
+    static Term Let(std::string binding_name) {
+        Term result;
+        result.category_ = Category::LET;
+        result.let_binding_name_ = binding_name;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -592,6 +600,8 @@ class Term {
 
     bool IsProjection() const { return category_ == Category::PROJECTION; }
 
+    bool IsLet() const { return category_ == Category::LET; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -615,15 +625,15 @@ class Term {
                    record_labels_.size() != record_terms_.size();
         } else if (IsProjection()) {
             return !projection_term_;
+        } else if (IsLet()) {
+            return let_binding_name_.empty() || !let_body_term_ ||
+                   !let_body_term_;
         }
 
         return true;
     }
 
-    bool IsEmpty() const {
-        return !IsLambda() && !IsVariable() && !IsApplication() && !IsIf() &&
-               !IsSucc() && !IsPred() && !IsIsZero();
-    }
+    bool IsEmpty() const { return category_ == Category::EMPTY; }
 
     Term& Combine(Term&& term) {
         if (term.IsInvalid()) {
@@ -720,6 +730,24 @@ class Term {
                                 std::make_unique<Term>(std::move(term)));
 
             projection_label_ = "";
+        } else if (IsLet()) {
+            if (!let_bound_term_) {
+                let_bound_term_ = std::make_unique<Term>(std::move(term));
+            } else {
+                if (!let_body_term_) {
+                    let_body_term_ = std::make_unique<Term>(std::move(term));
+                } else {
+                    // If the let binding term was completely parsed, then
+                    // combining this term and the argument term means applying
+                    // this lambda to the argument.
+                    *this =
+                        Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
+
+                    let_bound_term_ = nullptr;
+                    let_body_term_ = nullptr;
+                }
+            }
         } else {
             *this = std::move(term);
         }
@@ -807,6 +835,9 @@ class Term {
                 walk(binding_context_size, *term.unary_op_arg_);
             } else if (term.IsProjection()) {
                 walk(binding_context_size, *term.projection_term_);
+            } else if (term.IsLet()) {
+                walk(binding_context_size, *term.let_bound_term_);
+                walk(binding_context_size, *term.let_body_term_);
             }
         };
 
@@ -913,6 +944,12 @@ class Term {
 
     std::string ProjectionLabel() const { return projection_label_; }
 
+    std::string LetBindingName() const { return let_binding_name_; }
+
+    Term& LetBoundTerm() const { return *let_bound_term_; }
+
+    Term& LetBodyTerm() const { return *let_body_term_; }
+
     bool operator==(const Term& other) const {
         if (IsLambda() && other.IsLambda()) {
             return LambdaArgType() == other.LambdaArgType() &&
@@ -965,6 +1002,12 @@ class Term {
         if (IsProjection() && other.IsProjection()) {
             return projection_label_ == other.projection_label_ &&
                    *projection_term_ == *other.projection_term_;
+        }
+
+        if (IsLet() && other.IsLet()) {
+            return let_binding_name_ == other.let_binding_name_ &&
+                   *let_bound_term_ == *other.let_bound_term_ &&
+                   *let_body_term_ == *other.let_body_term_;
         }
 
         return false;
@@ -1024,6 +1067,13 @@ class Term {
             out << prefix << ".\n";
             out << projection_term_->ASTString(indentation + 2) << "\n";
             out << prefix_extra << projection_label_;
+        } else if (IsLet()) {
+            out << prefix << "let\n";
+            out << prefix_extra << let_binding_name_ << "\n";
+            out << prefix << "=\n";
+            out << let_bound_term_->ASTString(indentation + 2) << "\n";
+            out << prefix << "in\n";
+            out << let_body_term_->ASTString(indentation + 2);
         }
 
         return out.str();
@@ -1110,6 +1160,7 @@ class Term {
         ZERO,
         RECORD,
         PROJECTION,
+        LET,
     };
 
     Category category_ = Category::EMPTY;
@@ -1136,6 +1187,10 @@ class Term {
 
     std::unique_ptr<Term> projection_term_{};
     std::string projection_label_ = "";
+
+    std::string let_binding_name_ = "";
+    std::unique_ptr<Term> let_bound_term_{};
+    std::unique_ptr<Term> let_body_term_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -1178,6 +1233,9 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
         out << "}";
     } else if (term.IsProjection()) {
         out << *term.projection_term_ << "." << term.projection_label_;
+    } else if (term.IsLet()) {
+        out << "let (" << term.let_binding_name_ << ") = ("
+            << *term.let_bound_term_ << ") in (" << *term.let_body_term_ << ")";
     } else {
         out << "<ERROR>";
     }
@@ -1241,17 +1299,16 @@ class Parser {
 
                         case Token::IdentifieySubCategory::VARIABLE: {
                             auto bound_variable_it =
-                                std::find(std::begin(bound_variables),
-                                          std::end(bound_variables),
+                                std::find(std::rbegin(bound_variables),
+                                          std::rend(bound_variables),
                                           next_token.GetText());
                             int de_bruijn_idx = -1;
 
                             if (bound_variable_it !=
-                                std::end(bound_variables)) {
+                                std::rend(bound_variables)) {
                                 de_bruijn_idx =
-                                    std::distance(bound_variable_it,
-                                                  std::end(bound_variables)) -
-                                    1;
+                                    std::distance(std::rbegin(bound_variables),
+                                                  bound_variable_it);
                             } else {
                                 // The naming context for free variables (ref:
                                 // tapl,§6.1.2) is chosen to be the ASCII code
@@ -1485,6 +1542,50 @@ class Parser {
                     break;
                 }
 
+                case Token::Category::KEYWORD_LET: {
+                    Token new_token = lexer_.NextToken();
+
+                    if (new_token.GetCategory() !=
+                        Token::Category::IDENTIFIER) {
+                        throw std::invalid_argument(
+                            "Expected let-binding name.");
+                    }
+
+                    bound_variables.push_back(new_token.GetText());
+
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::Let(new_token.GetText());
+                    } else {
+                        term_stack.emplace_back(Term::Let(new_token.GetText()));
+                    }
+
+                    new_token = lexer_.NextToken();
+
+                    if (new_token.GetCategory() != Token::Category::EQUAL) {
+                        throw std::invalid_argument(
+                            "Expected '=' for let-binding.");
+                    }
+
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
+                    ++balance_parens;
+
+                    break;
+                }
+
+                case Token::Category::KEYWORD_IN: {
+                    UnwindStack(term_stack, stack_size_on_open_paren,
+                                bound_variables);
+
+                    --balance_parens;
+
+                    if (!term_stack.back().IsLet()) {
+                        throw std::invalid_argument("Unexpected 'in'");
+                    }
+
+                    break;
+                }
+
                 default: {
                     std::ostringstream error_ss;
                     error_ss << __LINE__ << " Unexpected token: " << next_token;
@@ -1503,7 +1604,7 @@ class Parser {
         }
 
         if (term_stack.back().IsInvalid()) {
-            throw std::invalid_argument("iiiiInvalid term.");
+            throw std::invalid_argument("Invalid term.");
         }
 
         return std::move(term_stack.back());
@@ -1521,6 +1622,12 @@ class Parser {
                 term_stack.back().MarkAsComplete();
                 // λ's variable is no longer part of the current binding
                 // context, therefore pop it.
+                bound_variables.pop_back();
+            }
+
+            if (term_stack.back().IsLet()) {
+                // let-binding's variable is no longer part of the current
+                // binding context, therefore pop it.
                 bound_variables.pop_back();
             }
 

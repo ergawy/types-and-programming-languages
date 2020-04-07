@@ -215,6 +215,14 @@ Term IsZero(Term&& arg) {
     return term;
 }
 
+Term Let(std::string binding_name, Term&& bound_term, Term&& body_term) {
+    auto term = Term::Let(binding_name);
+    term.Combine(std::move(bound_term));
+    term.Combine(std::move(body_term));
+
+    return term;
+}
+
 }  // namespace
 
 namespace parser {
@@ -1126,6 +1134,36 @@ void InitData() {
         Term::Application(LambdaUP("r", Type::Record({{"x", Type::Nat()}}),
                                    Term::Projection(VariableUP("r", 0), "x")),
                           std::make_unique<Term>(std::move(record5)))});
+
+    kData.emplace_back(TestData{"let x = true in succ 0",
+                                Let("x", Term::True(), Succ(Term::Zero()))});
+
+    kData.emplace_back(TestData{
+        "let x = true in x", Let("x", Term::True(), Term::Variable("x", 0))});
+
+    kData.emplace_back(
+        TestData{"l x:Bool. l x:Nat. x",
+                 Lambda("x", Type::Bool(),
+                        Lambda("x", Type::Nat(), Term::Variable("x", 0)))});
+
+    kData.emplace_back(
+        TestData{"let x = l x:Bool. x in succ 0",
+                 Let("x", Lambda("x", Type::Bool(), Term::Variable("x", 0)),
+                     Succ(Term::Zero()))});
+
+    kData.emplace_back(TestData{
+        "l y:Nat. let x = l x:Bool. x in succ 0",
+        Lambda("y", Type::Nat(),
+               Let("x", Lambda("x", Type::Bool(), Term::Variable("x", 0)),
+                   Succ(Term::Zero())))});
+
+    kData.emplace_back(TestData{
+        "(l y:Nat. let x = l x:Bool. x in succ 0) a",
+        Term::Application(
+            LambdaUP("y", Type::Nat(),
+                     Let("x", Lambda("x", Type::Bool(), Term::Variable("x", 0)),
+                         Succ(Term::Zero()))),
+            VariableUP("a", 0))});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
