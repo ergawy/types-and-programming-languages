@@ -1423,6 +1423,17 @@ void InitData() {
     kData.emplace_back(TestData{"{x=0}.y", Type::IllTyped()});
 
     kData.emplace_back(TestData{"{x=0, y=true}.y", Type::Bool()});
+
+    kData.emplace_back(TestData{"let x = true in l y:Nat. x",
+                                Type::Function(Type::Nat(), Type::Bool())});
+
+    kData.emplace_back(
+        TestData{"let x = l x:Bool. x in l y:Nat. x",
+                 Type::Function(Type::Nat(),
+                                Type::Function(Type::Bool(), Type::Bool()))});
+
+    kData.emplace_back(TestData{"let x = true in l x:Nat. x",
+                                Type::Function(Type::Nat(), Type::Nat())});
 }
 
 struct SubtypingTestData {

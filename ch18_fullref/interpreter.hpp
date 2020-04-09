@@ -1986,6 +1986,11 @@ class TypeChecker {
                 AddBinding(ctx, term.LambdaArgName(), term.LambdaArgType());
             Type& return_type = TypeOf(new_ctx, term.LambdaBody());
             res = &Type::Function(term.LambdaArgType(), return_type);
+        } else if (term.IsLet()) {
+            Type& let_bound_type = TypeOf(ctx, term.LetBoundTerm());
+            Context new_ctx =
+                AddBinding(ctx, term.LetBindingName(), let_bound_type);
+            res = &TypeOf(new_ctx, term.LetBodyTerm());
         } else if (term.IsApplication()) {
             Type& lhs_type = TypeOf(ctx, term.ApplicationLHS());
             Type& rhs_type = TypeOf(ctx, term.ApplicationRHS());
