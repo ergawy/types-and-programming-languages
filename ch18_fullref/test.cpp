@@ -1434,6 +1434,17 @@ void InitData() {
 
     kData.emplace_back(TestData{"let x = true in l x:Nat. x",
                                 Type::Function(Type::Nat(), Type::Nat())});
+
+    kData.emplace_back(TestData{"(l y:Nat. (let x = y in x)) 0", Type::Nat()});
+
+    kData.emplace_back(
+        TestData{"(l y:Nat. (let x = succ y in x)) 0", Type::Nat()});
+
+    kData.emplace_back(
+        TestData{"(l y:Nat. (let x = succ y in succ x)) 0", Type::Nat()});
+
+    kData.emplace_back(TestData{"(l y:Nat. (let x = succ false in succ x)) 0",
+                                Type::IllTyped()});
 }
 
 struct SubtypingTestData {
@@ -1794,6 +1805,23 @@ void InitData() {
     kData.emplace_back(
         TestData{"(l r:{a:{x:Nat}}. r.a.x) {a={x=succ 0, y=true}, b=false}",
                  {"1", Type::Nat()}});
+
+    kData.emplace_back(TestData{"let x = true in x", {"true", Type::Bool()}});
+
+    kData.emplace_back(TestData{
+        "let x = true in l y:Nat. x",
+        {"{l y : Nat. true}", Type::Function(Type::Nat(), Type::Bool())}});
+
+    kData.emplace_back(TestData{"(l y:Nat. (let x = succ y in succ x)) 0",
+                                {"2", Type::Nat()}});
+
+    kData.emplace_back(TestData{
+        "(l y:Nat. (let x = succ y in if iszero y then succ x else y)) 0",
+        {"2", Type::Nat()}});
+
+    kData.emplace_back(TestData{
+        "(l y:Nat. (let x = succ y in if iszero y then succ x else y)) succ 0",
+        {"1", Type::Nat()}});
 }
 
 void Run() {

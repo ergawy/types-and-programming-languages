@@ -820,6 +820,9 @@ class Term {
                 }
             } else if (term.IsLambda()) {
                 walk(binding_context_size + 1, *term.lambda_body_);
+            } else if (term.IsLet()) {
+                walk(binding_context_size + 1, *term.let_bound_term_);
+                walk(binding_context_size + 1, *term.let_body_term_);
             } else if (term.IsApplication()) {
                 walk(binding_context_size, *term.application_lhs_);
                 walk(binding_context_size, *term.application_rhs_);
@@ -1987,9 +1990,10 @@ class TypeChecker {
             Type& return_type = TypeOf(new_ctx, term.LambdaBody());
             res = &Type::Function(term.LambdaArgType(), return_type);
         } else if (term.IsLet()) {
-            Type& let_bound_type = TypeOf(ctx, term.LetBoundTerm());
             Context new_ctx =
-                AddBinding(ctx, term.LetBindingName(), let_bound_type);
+                AddBinding(ctx, term.LetBindingName(), Type::IllTyped());
+            Type& let_bound_type = TypeOf(new_ctx, term.LetBoundTerm());
+            new_ctx[0].second = &let_bound_type;
             res = &TypeOf(new_ctx, term.LetBodyTerm());
         } else if (term.IsApplication()) {
             Type& lhs_type = TypeOf(ctx, term.ApplicationLHS());
@@ -2113,6 +2117,11 @@ class Interpreter {
             Eval1(term.ApplicationRHS());
         } else if (term.IsApplication()) {
             Eval1(term.ApplicationLHS());
+        } else if (term.IsLet() && IsValue(term.LetBoundTerm())) {
+            term_subst_top(term.LetBoundTerm(), term.LetBodyTerm());
+            std::swap(term, term.LetBodyTerm());
+        } else if (term.IsLet()) {
+            Eval1(term.LetBoundTerm());
         } else if (term.IsIf()) {
             if (term.IfCondition() == Term::True()) {
                 std::swap(term, term.IfThen());
