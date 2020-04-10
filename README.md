@@ -21,7 +21,7 @@ Typed Arithmetic Expressions | [ch08_tyarith](ch08_tyarith) | :heavy_check_mark:
 Simply Typed Lambda Calculus | [ch10_simplebool](ch10_simplebool) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests <br> :heavy_check_mark: Interpreter + Tests
 Typed Lambda Calculus (with various extensions) | [ch11_fullsimple](ch11_fullsimple) | __Natural numbers (Nat) type support__ <br> :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests <br> __Records and Projections__ <br> :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Type Checker + Tests |
 Typed Lambda Calculus with Subtyping | [ch17_rcdjoinsub](ch17_rcdjoinsub) | :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests |
-Typed Lambda Calculus with Imperative Objects | [ch18_fullref](ch18_fullref) | __let bindings support__ <br> :construction: |
+Typed Lambda Calculus with Imperative Objects | [ch18_fullref](ch18_fullref) | __Let bindings support__ <br> :heavy_check_mark: Lexer + Tests <br> :heavy_check_mark: Parser + Tests <br> :heavy_check_mark: Interpreter + Tests <br> __References__ <br> :construction: |
 
 ### Usage
 
