@@ -2178,7 +2178,7 @@ class Interpreter {
             } else {
                 Eval1(projection_term);
             }
-        } else if (term.IsRecord()) {
+        } else if (term.IsRecord() && !IsRecordValue(term)) {
             for (auto& record_term : term.RecordTerms()) {
                 if (!IsValue(*record_term)) {
                     Eval1(*record_term);

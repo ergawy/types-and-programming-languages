@@ -1822,6 +1822,9 @@ void InitData() {
     kData.emplace_back(TestData{
         "(l y:Nat. (let x = succ y in if iszero y then succ x else y)) succ 0",
         {"1", Type::Nat()}});
+
+    kData.emplace_back(TestData{
+        "{x=true}", {"{x=true}", Type::Record({{"x", Type::Bool()}})}});
 }
 
 void Run() {
