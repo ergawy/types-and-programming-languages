@@ -592,6 +592,13 @@ class Term {
         return result;
     }
 
+    static Term Deref() {
+        Term result;
+        result.category_ = Category::DEREF;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -632,6 +639,8 @@ class Term {
 
     bool IsRef() const { return category_ == Category::REF; }
 
+    bool IsDeref() const { return category_ == Category::DEREF; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -660,6 +669,8 @@ class Term {
                    !let_body_term_;
         } else if (IsRef()) {
             return !ref_term_;
+        } else if (IsDeref()) {
+            return !deref_term_;
         }
 
         return true;
@@ -785,6 +796,16 @@ class Term {
                 ref_term_ = std::make_unique<Term>(std::move(term));
             } else {
                 // If the ref term was completely parsed, then combining
+                // this term and the argument term means applying this
+                // lambda to the argument.
+                *this = Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
+            }
+        } else if (IsDeref()) {
+            if (!deref_term_) {
+                deref_term_ = std::make_unique<Term>(std::move(term));
+            } else {
+                // If the de-ref term was completely parsed, then combining
                 // this term and the argument term means applying this
                 // lambda to the argument.
                 *this = Application(std::make_unique<Term>(std::move(*this)),
@@ -1059,6 +1080,10 @@ class Term {
             return *ref_term_ == *other.ref_term_;
         }
 
+        if (IsDeref() && other.IsDeref()) {
+            return *deref_term_ == *other.deref_term_;
+        }
+
         return false;
     }
 
@@ -1125,6 +1150,9 @@ class Term {
             out << let_body_term_->ASTString(indentation + 2);
         } else if (IsRef()) {
             out << prefix << "ref\n";
+            out << ref_term_->ASTString(indentation + 2);
+        } else if (IsDeref()) {
+            out << prefix << "!\n";
             out << ref_term_->ASTString(indentation + 2);
         }
 
@@ -1214,6 +1242,7 @@ class Term {
         PROJECTION,
         LET,
         REF,
+        DEREF,
     };
 
     Category category_ = Category::EMPTY;
@@ -1246,6 +1275,8 @@ class Term {
     std::unique_ptr<Term> let_body_term_{};
 
     std::unique_ptr<Term> ref_term_{};
+
+    std::unique_ptr<Term> deref_term_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -1292,7 +1323,9 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
         out << "let (" << term.let_binding_name_ << ") = ("
             << *term.let_bound_term_ << ") in (" << *term.let_body_term_ << ")";
     } else if (term.IsRef()) {
-        out << "ref (" << *term.ref_term_ << ")";
+        out << "ref " << *term.ref_term_;
+    } else if (term.IsDeref()) {
+        out << "! " << *term.deref_term_;
     } else {
         out << "<ERROR>";
     }
@@ -1652,6 +1685,20 @@ class Parser {
                         // Else, push a new term on the stack to start
                         // building the ref term.
                         term_stack.emplace_back(Term::Ref());
+                    }
+
+                    break;
+                }
+
+                case Token::Category::EXCLAMATION: {
+                    // If the current stack top is empty, use its slot for
+                    // the de-ref term.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::Deref();
+                    } else {
+                        // Else, push a new term on the stack to start
+                        // building the de-ref term.
+                        term_stack.emplace_back(Term::Deref());
                     }
 
                     break;

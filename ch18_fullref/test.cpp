@@ -239,6 +239,17 @@ std::unique_ptr<Term> RefUP(Term&& ref_term) {
     return std::make_unique<Term>(Ref(std::move(ref_term)));
 }
 
+Term Deref(Term&& deref_term) {
+    Term term = Term::Deref();
+    term.Combine(std::move(deref_term));
+
+    return term;
+}
+
+std::unique_ptr<Term> DerefUP(Term&& deref_term) {
+    return std::make_unique<Term>(Deref(std::move(deref_term)));
+}
+
 }  // namespace
 
 namespace parser {
@@ -1200,6 +1211,26 @@ void InitData() {
         Term::Application(
             LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))),
             RefUP(Term::Variable("x", 23)))});
+
+    kData.emplace_back(TestData{"!x", Deref(Term::Variable("x", 23))});
+
+    kData.emplace_back(TestData{"!succ 0", Deref(Succ(Term::Zero()))});
+
+    kData.emplace_back(
+        TestData{"!x y", Term::Application(DerefUP(Term::Variable("x", 23)),
+                                           VariableUP("y", 24))});
+
+    kData.emplace_back(TestData{
+        "!x let y = succ 0 in iszero y",
+        Term::Application(
+            DerefUP(Term::Variable("x", 23)),
+            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))))});
+
+    kData.emplace_back(TestData{
+        "(let y = succ 0 in iszero y) !x ",
+        Term::Application(
+            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))),
+            DerefUP(Term::Variable("x", 23)))});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
