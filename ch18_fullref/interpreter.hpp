@@ -585,6 +585,13 @@ class Term {
         return result;
     }
 
+    static Term Ref() {
+        Term result;
+        result.category_ = Category::REF;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -623,6 +630,8 @@ class Term {
 
     bool IsLet() const { return category_ == Category::LET; }
 
+    bool IsRef() const { return category_ == Category::REF; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -649,6 +658,8 @@ class Term {
         } else if (IsLet()) {
             return let_binding_name_.empty() || !let_body_term_ ||
                    !let_body_term_;
+        } else if (IsRef()) {
+            return !ref_term_;
         }
 
         return true;
@@ -768,6 +779,16 @@ class Term {
                     let_bound_term_ = nullptr;
                     let_body_term_ = nullptr;
                 }
+            }
+        } else if (IsRef()) {
+            if (!ref_term_) {
+                ref_term_ = std::make_unique<Term>(std::move(term));
+            } else {
+                // If the ref term was completely parsed, then combining
+                // this term and the argument term means applying this
+                // lambda to the argument.
+                *this = Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
             }
         } else {
             *this = std::move(term);
@@ -1034,6 +1055,10 @@ class Term {
                    *let_body_term_ == *other.let_body_term_;
         }
 
+        if (IsRef() && other.IsRef()) {
+            return *ref_term_ == *other.ref_term_;
+        }
+
         return false;
     }
 
@@ -1098,6 +1123,9 @@ class Term {
             out << let_bound_term_->ASTString(indentation + 2) << "\n";
             out << prefix << "in\n";
             out << let_body_term_->ASTString(indentation + 2);
+        } else if (IsRef()) {
+            out << prefix << "ref\n";
+            out << ref_term_->ASTString(indentation + 2);
         }
 
         return out.str();
@@ -1185,6 +1213,7 @@ class Term {
         RECORD,
         PROJECTION,
         LET,
+        REF,
     };
 
     Category category_ = Category::EMPTY;
@@ -1215,6 +1244,8 @@ class Term {
     std::string let_binding_name_ = "";
     std::unique_ptr<Term> let_bound_term_{};
     std::unique_ptr<Term> let_body_term_{};
+
+    std::unique_ptr<Term> ref_term_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -1260,6 +1291,8 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsLet()) {
         out << "let (" << term.let_binding_name_ << ") = ("
             << *term.let_bound_term_ << ") in (" << *term.let_body_term_ << ")";
+    } else if (term.IsRef()) {
+        out << "ref (" << *term.ref_term_ << ")";
     } else {
         out << "<ERROR>";
     }
@@ -1605,6 +1638,20 @@ class Parser {
 
                     if (!term_stack.back().IsLet()) {
                         throw std::invalid_argument("Unexpected 'in'");
+                    }
+
+                    break;
+                }
+
+                case Token::Category::KEYWORD_REF: {
+                    // If the current stack top is empty, use its slot for
+                    // the ref term.
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::Ref();
+                    } else {
+                        // Else, push a new term on the stack to start
+                        // building the ref term.
+                        term_stack.emplace_back(Term::Ref());
                     }
 
                     break;

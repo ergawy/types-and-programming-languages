@@ -222,6 +222,23 @@ Term Let(std::string binding_name, Term&& bound_term, Term&& body_term) {
     return term;
 }
 
+std::unique_ptr<Term> LetUP(std::string binding_name, Term&& bound_term,
+                            Term&& body_term) {
+    return std::make_unique<Term>(
+        Let(binding_name, std::move(bound_term), std::move(body_term)));
+}
+
+Term Ref(Term&& ref_term) {
+    Term term = Term::Ref();
+    term.Combine(std::move(ref_term));
+
+    return term;
+}
+
+std::unique_ptr<Term> RefUP(Term&& ref_term) {
+    return std::make_unique<Term>(Ref(std::move(ref_term)));
+}
+
 }  // namespace
 
 namespace parser {
@@ -1164,6 +1181,26 @@ void InitData() {
                          Succ(Term::Zero()))),
             VariableUP("a", 0))});
 
+    kData.emplace_back(TestData{"ref x", Ref(Term::Variable("x", 23))});
+
+    kData.emplace_back(TestData{"ref succ 0", Ref(Succ(Term::Zero()))});
+
+    kData.emplace_back(
+        TestData{"ref x y", Term::Application(RefUP(Term::Variable("x", 23)),
+                                              VariableUP("y", 24))});
+
+    kData.emplace_back(TestData{
+        "ref x let y = succ 0 in iszero y",
+        Term::Application(
+            RefUP(Term::Variable("x", 23)),
+            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))))});
+
+    kData.emplace_back(TestData{
+        "(let y = succ 0 in iszero y) ref x ",
+        Term::Application(
+            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))),
+            RefUP(Term::Variable("x", 23)))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1200,6 +1237,7 @@ void InitData() {
     kData.emplace_back(TestData{"{x=succ 0, y=}"});
     kData.emplace_back(TestData{"{x=succ 0, true}"});
     kData.emplace_back(TestData{".z"});
+    kData.emplace_back(TestData{"ref"});
 }
 
 void Run() {
