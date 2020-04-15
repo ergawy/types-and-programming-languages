@@ -23,12 +23,14 @@ struct Token {
         DOT,
         COMMA,
         EQUAL,
+        ASSIGN,
         OPEN_PAREN,
         CLOSE_PAREN,
         OPEN_BRACE,
         CLOSE_BRACE,
         COLON,
         ARROW,
+        EXCLAMATION,
 
         CONSTANT_TRUE,
         CONSTANT_FALSE,
@@ -47,6 +49,8 @@ struct Token {
 
         KEYWORD_LET,
         KEYWORD_IN,
+
+        KEYWORD_REF,
 
         MARKER_END,
         MARKER_INVALID,
@@ -85,6 +89,7 @@ const std::string kKeywordBool = "Bool";
 const std::string kKeywordNat = "Nat";
 const std::string kKeywordLet = "let";
 const std::string kKeywordIn = "in";
+const std::string kKeywordRef = "ref";
 }  // namespace
 
 class Lexer {
@@ -117,6 +122,8 @@ class Lexer {
             {"}", Token::Category::CLOSE_BRACE},
             {":", Token::Category::COLON},
             {"->", Token::Category::ARROW},
+            {":=", Token::Category::ASSIGN},
+            {"!", Token::Category::EXCLAMATION},
 
             {"true", Token::Category::CONSTANT_TRUE},
             {"false", Token::Category::CONSTANT_FALSE},
@@ -135,6 +142,8 @@ class Lexer {
 
             {kKeywordLet, Token::Category::KEYWORD_LET},
             {kKeywordIn, Token::Category::KEYWORD_IN},
+
+            {kKeywordRef, Token::Category::KEYWORD_REF},
         };
 
         auto token_string = token_strings_[current_token_];
@@ -163,12 +172,12 @@ class Lexer {
 
         while (in.get(c)) {
             // Check for one-character separators and surround them with spaces.
-            if (c == ':' || c == ',' || c == '.' || c == '=' || c == '(' ||
-                c == ')' || c == '{' || c == '}') {
+            if (c == ',' || c == '.' || c == '=' || c == '(' || c == ')' ||
+                c == '{' || c == '}' || c == '!') {
                 processed_stream << " " << c << " ";
             } else if (c == '-') {
-                // Check for the only two-character serparator '->' and surround
-                // it with spaces.
+                // Check for the two-character serparator '->' and surround it
+                // with spaces.
                 if (in.peek() == '>') {
                     in.get(c);
                     processed_stream << " -> ";
@@ -176,6 +185,15 @@ class Lexer {
                     // Just write '-' and let the lexing error be
                     // discovered later.
                     processed_stream << " - ";
+                }
+            } else if (c == ':') {
+                // Check for the two-character serparator ':=' and surround it
+                // with spaces.
+                if (in.peek() == '=') {
+                    in.get(c);
+                    processed_stream << " := ";
+                } else {
+                    processed_stream << " : ";
                 }
             } else {
                 processed_stream << c;
@@ -213,6 +231,7 @@ std::ostream& operator<<(std::ostream& out, Token token) {
         {Token::Category::CLOSE_BRACE, "}"},
         {Token::Category::COLON, ":"},
         {Token::Category::ARROW, "->"},
+        {Token::Category::ASSIGN, ":="},
 
         {Token::Category::CONSTANT_TRUE, "<true>"},
         {Token::Category::CONSTANT_FALSE, "<false>"},
@@ -231,6 +250,8 @@ std::ostream& operator<<(std::ostream& out, Token token) {
 
         {Token::Category::KEYWORD_LET, "let"},
         {Token::Category::KEYWORD_IN, "in"},
+
+        {Token::Category::KEYWORD_REF, "ref"},
 
         {Token::Category::MARKER_END, "<END>"},
         {Token::Category::MARKER_INVALID, "<INVALID>"},

@@ -59,15 +59,15 @@ using namespace utils::test;
 
 std::vector<TestData> kData = {
     // Valid tokens (non-variables):
-    TestData{"l.():->{}=",
+    TestData{"l.():->{}=:=",
              {Token{Category::LAMBDA}, Token{Category::DOT},
               Token{Category::OPEN_PAREN}, Token{Category::CLOSE_PAREN},
               Token{Category::COLON}, Token{Category::ARROW},
               Token{Category::OPEN_BRACE}, Token{Category::CLOSE_BRACE},
-              Token{Category::EQUAL}}},
+              Token{Category::EQUAL}, Token{Category::ASSIGN}}},
 
     // Valid tokens (keywords):
-    TestData{"true false if else then 0 succ pred iszero Bool Nat let in",
+    TestData{"true false if else then 0 succ pred iszero Bool Nat let in ref",
              {
                  Token{Category::CONSTANT_TRUE},
                  Token{Category::CONSTANT_FALSE},
@@ -85,6 +85,8 @@ std::vector<TestData> kData = {
 
                  Token{Category::KEYWORD_LET},
                  Token{Category::KEYWORD_IN},
+
+                 Token{Category::KEYWORD_REF},
              }},
 
     // Valid tokens (variables):
@@ -94,22 +96,19 @@ std::vector<TestData> kData = {
          Token{Category::IDENTIFIER, "L"}, Token{Category::IDENTIFIER, "test"},
          Token{Category::IDENTIFIER, "_"}}},
     // Invalid single-character tokens:
-    TestData{
-        "! @ # $ % ^ & * - + ? / < > ' \" \\ | [ ]  ",
-        {Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
-         Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID}}},
+    TestData{"@ # $ % ^ & * - + ? / < > ' \" \\ | [ ]  ",
+             {Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID},
+              Token{Category::MARKER_INVALID}}},
 
-    TestData{
-        "!@ x*",
-        {Token{Category::MARKER_INVALID}, Token{Category::MARKER_INVALID}}},
+    TestData{"x*", {Token{Category::MARKER_INVALID}}},
 };  // namespace test
 
 void Run() {
