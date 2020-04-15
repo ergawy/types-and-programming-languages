@@ -250,6 +250,13 @@ std::unique_ptr<Term> DerefUP(Term&& deref_term) {
     return std::make_unique<Term>(Deref(std::move(deref_term)));
 }
 
+Term Assignment(Term&& lhs, Term&& rhs) {
+    Term term = Term::Assignment(std::make_unique<Term>(std::move(lhs)));
+    term.Combine(std::move(rhs));
+
+    return term;
+}
+
 }  // namespace
 
 namespace parser {
@@ -1231,6 +1238,20 @@ void InitData() {
         Term::Application(
             LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))),
             DerefUP(Term::Variable("x", 23)))});
+
+    kData.emplace_back(TestData{"x := y", Assignment(Term::Variable("x", 23),
+                                                     Term::Variable("y", 24))});
+
+    kData.emplace_back(TestData{
+        "x := y z", Assignment(Term::Variable("x", 23),
+                               Term::Application(VariableUP("y", 24),
+                                                 VariableUP("z", 25)))});
+
+    kData.emplace_back(TestData{
+        "a b := y z",
+        Assignment(
+            Term::Application(VariableUP("a", 0), VariableUP("b", 1)),
+            Term::Application(VariableUP("y", 24), VariableUP("z", 25)))});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});

@@ -599,6 +599,14 @@ class Term {
         return result;
     }
 
+    static Term Assignment(std::unique_ptr<Term> lhs) {
+        Term result;
+        result.assignment_lhs_ = std::move(lhs);
+        result.category_ = Category::ASSIGNMENT;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -641,6 +649,8 @@ class Term {
 
     bool IsDeref() const { return category_ == Category::DEREF; }
 
+    bool IsAssignment() const { return category_ == Category::ASSIGNMENT; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -671,6 +681,8 @@ class Term {
             return !ref_term_;
         } else if (IsDeref()) {
             return !deref_term_;
+        } else if (IsAssignment()) {
+            return !assignment_lhs_ || !assignment_rhs_;
         }
 
         return true;
@@ -811,6 +823,18 @@ class Term {
                 *this = Application(std::make_unique<Term>(std::move(*this)),
                                     std::make_unique<Term>(std::move(term)));
             }
+        } else if (IsAssignment()) {
+            if (!assignment_lhs_) {
+                throw std::logic_error("Combining with an empty assignment.");
+            } else if (!assignment_rhs_) {
+                assignment_rhs_ = std::make_unique<Term>(std::move(term));
+            } else {
+                // If the assignment term was completely parsed, then combining
+                // this term and the argument term means applying this
+                // lambda to the argument.
+                *this = Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
+            }
         } else {
             *this = std::move(term);
         }
@@ -820,7 +844,10 @@ class Term {
 
     void ConvertToProjection(std::string label) {
         *this = Projection(std::make_unique<Term>(std::move(*this)), label);
-        category_ = Category::PROJECTION;
+    }
+
+    void ConvertToAssignment() {
+        *this = Assignment(std::make_unique<Term>(std::move(*this)));
     }
 
     void AddRecordLabel(std::string label) {
@@ -1084,6 +1111,11 @@ class Term {
             return *deref_term_ == *other.deref_term_;
         }
 
+        if (IsAssignment() && other.IsAssignment()) {
+            return *assignment_lhs_ == *other.assignment_lhs_ &&
+                   *assignment_rhs_ == *other.assignment_rhs_;
+        }
+
         return false;
     }
 
@@ -1154,6 +1186,10 @@ class Term {
         } else if (IsDeref()) {
             out << prefix << "!\n";
             out << ref_term_->ASTString(indentation + 2);
+        } else if (IsAssignment()) {
+            out << prefix << ":=\n";
+            out << assignment_lhs_->ASTString(indentation + 2) << "\n";
+            out << assignment_rhs_->ASTString(indentation + 2);
         }
 
         return out.str();
@@ -1243,6 +1279,7 @@ class Term {
         LET,
         REF,
         DEREF,
+        ASSIGNMENT,
     };
 
     Category category_ = Category::EMPTY;
@@ -1277,6 +1314,9 @@ class Term {
     std::unique_ptr<Term> ref_term_{};
 
     std::unique_ptr<Term> deref_term_{};
+
+    std::unique_ptr<Term> assignment_lhs_{};
+    std::unique_ptr<Term> assignment_rhs_{};
 };
 
 std::ostream& operator<<(std::ostream& out, const Term& term) {
@@ -1326,6 +1366,9 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
         out << "ref " << *term.ref_term_;
     } else if (term.IsDeref()) {
         out << "! " << *term.deref_term_;
+    } else if (term.IsAssignment()) {
+        out << "(" << *term.assignment_lhs_ << ") := (" << *term.assignment_rhs_
+            << ")";
     } else {
         out << "<ERROR>";
     }
@@ -1700,6 +1743,19 @@ class Parser {
                         // building the de-ref term.
                         term_stack.emplace_back(Term::Deref());
                     }
+
+                    break;
+                }
+
+                case Token::Category::ASSIGN: {
+                    if (term_stack.empty() || term_stack.back().IsInvalid()) {
+                        throw std::invalid_argument("Unexpected ':='");
+                    }
+
+                    term_stack.back().ConvertToAssignment();
+
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
 
                     break;
                 }
