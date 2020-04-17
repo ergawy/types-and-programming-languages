@@ -1290,6 +1290,9 @@ void InitData() {
     kData.emplace_back(TestData{"{x=succ 0, true}"});
     kData.emplace_back(TestData{".z"});
     kData.emplace_back(TestData{"ref"});
+    kData.emplace_back(TestData{"l x:Ref. x"});
+    kData.emplace_back(TestData{"l x:Ref Ref. x"});
+    kData.emplace_back(TestData{"l x: (Ref Bool ->) Nat. 0"});
 }
 
 void Run() {
@@ -1534,6 +1537,30 @@ void InitData() {
 
     kData.emplace_back(TestData{"(l y:Nat. (let x = succ false in succ x)) 0",
                                 Type::IllTyped()});
+
+    kData.emplace_back(TestData{
+        "l x: Ref Bool. x",
+        Type::Function(Type::Ref(Type::Bool()), Type::Ref(Type::Bool()))});
+
+    kData.emplace_back(
+        TestData{"l x: Ref Ref Bool. x",
+                 Type::Function(Type::Ref(Type::Ref(Type::Bool())),
+                                Type::Ref(Type::Ref(Type::Bool())))});
+
+    kData.emplace_back(TestData{
+        "l x: (Ref Bool) -> Nat. 0",
+        Type::Function(Type::Function(Type::Ref(Type::Bool()), Type::Nat()),
+                       Type::Nat())});
+
+    kData.emplace_back(TestData{
+        "l x: Ref Bool -> Nat. 0",
+        Type::Function(Type::Ref(Type::Function(Type::Bool(), Type::Nat())),
+                       Type::Nat())});
+
+    kData.emplace_back(TestData{
+        "l x: (Ref Bool -> Nat). 0",
+        Type::Function(Type::Ref(Type::Function(Type::Bool(), Type::Nat())),
+                       Type::Nat())});
 }
 
 struct SubtypingTestData {

@@ -51,6 +51,7 @@ struct Token {
         KEYWORD_IN,
 
         KEYWORD_REF,
+        KEYWORD_REF_TYPE,
 
         MARKER_END,
         MARKER_INVALID,
@@ -90,6 +91,7 @@ const std::string kKeywordNat = "Nat";
 const std::string kKeywordLet = "let";
 const std::string kKeywordIn = "in";
 const std::string kKeywordRef = "ref";
+const std::string kKeywordRefType = "Ref";
 }  // namespace
 
 class Lexer {
@@ -144,6 +146,7 @@ class Lexer {
             {kKeywordIn, Token::Category::KEYWORD_IN},
 
             {kKeywordRef, Token::Category::KEYWORD_REF},
+            {kKeywordRefType, Token::Category::KEYWORD_REF_TYPE},
         };
 
         auto token_string = token_strings_[current_token_];
@@ -252,6 +255,7 @@ std::ostream& operator<<(std::ostream& out, Token token) {
         {Token::Category::KEYWORD_IN, "in"},
 
         {Token::Category::KEYWORD_REF, "ref"},
+        {Token::Category::KEYWORD_REF_TYPE, "Ref"},
 
         {Token::Category::MARKER_END, "<END>"},
         {Token::Category::MARKER_INVALID, "<INVALID>"},
@@ -343,6 +347,23 @@ class Type {
         return *type_pool.back();
     }
 
+    static Type& Ref(Type& ref_type) {
+        static std::vector<std::unique_ptr<Type>> type_pool;
+
+        auto result = std::find_if(std::begin(type_pool), std::end(type_pool),
+                                   [&](const std::unique_ptr<Type>& type) {
+                                       return type->ref_type_ == &ref_type;
+                                   });
+
+        if (result != std::end(type_pool)) {
+            return **result;
+        }
+
+        type_pool.emplace_back(std::unique_ptr<Type>(new Type(&ref_type)));
+
+        return *type_pool.back();
+    }
+
     Type(const Type&) = delete;
     Type& operator=(const Type&) = delete;
 
@@ -366,6 +387,8 @@ class Type {
             case TypeCategory::FUNCTION:
                 assert(lhs_ && rhs_ && other.lhs_ && other.rhs_);
                 return (*lhs_ == *other.lhs_) && (*rhs_ == *other.rhs_);
+            case TypeCategory::REF:
+                return *ref_type_ == *other.ref_type_;
             case TypeCategory::RECORD:
                 return record_fields_ == other.record_fields_;
         }
@@ -388,6 +411,8 @@ class Type {
     bool IsFunction() const { return category_ == TypeCategory::FUNCTION; }
 
     bool IsRecord() const { return category_ == TypeCategory::RECORD; }
+
+    bool IsRef() const { return category_ == TypeCategory::REF; }
 
     Type& FunctionLHS() const {
         if (!IsFunction()) {
@@ -414,17 +439,12 @@ class Type {
     }
 
    private:
-    Type(Type& lhs, Type& rhs)
-        : lhs_(&lhs), rhs_(&rhs), category_(TypeCategory::FUNCTION) {}
-
-    Type(RecordFields fields)
-        : record_fields_(std::move(fields)), category_(TypeCategory::RECORD) {}
-
     enum class TypeCategory {
         BASE,
         FUNCTION,
         RECORD,
         TOP,
+        REF,
         ILL,
     };
 
@@ -438,6 +458,14 @@ class Type {
     Type(BaseType base_type)
         : base_type_(base_type), category_(TypeCategory::BASE) {}
 
+    Type(Type& lhs, Type& rhs)
+        : lhs_(&lhs), rhs_(&rhs), category_(TypeCategory::FUNCTION) {}
+
+    Type(RecordFields fields)
+        : record_fields_(std::move(fields)), category_(TypeCategory::RECORD) {}
+
+    Type(Type* ref_type) : ref_type_(ref_type), category_(TypeCategory::REF) {}
+
     TypeCategory category_ = TypeCategory::ILL;
 
     BaseType base_type_;
@@ -446,6 +474,8 @@ class Type {
     Type* rhs_ = nullptr;
 
     RecordFields record_fields_{};
+
+    Type* ref_type_ = nullptr;
 };
 
 std::ostream& operator<<(std::ostream& out, const Type& type) {
@@ -473,6 +503,8 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
         }
 
         out << "}";
+    } else if (type.IsRef()) {
+        out << "Ref " << *type.ref_type_;
     } else {
         out << "Ⱦ";
     }
@@ -1838,7 +1870,14 @@ class Parser {
             throw std::invalid_argument("Expected to parse a ':'.");
         }
 
-        return {arg_name, ParseType()};
+        Type& type = ParseType();
+        token = lexer_.NextToken();
+
+        if (token.GetCategory() != Token::Category::DOT) {
+            throw std::invalid_argument("Expected to parse a '.'.");
+        }
+
+        return {arg_name, type};
     }
 
     Type& ParseType() {
@@ -1862,6 +1901,9 @@ class Parser {
             } else if (token.GetCategory() == Token::Category::OPEN_BRACE) {
                 lexer_.PutBackToken();
                 parts.emplace_back(&ParseRecordType());
+            } else if (token.GetCategory() ==
+                       Token::Category::KEYWORD_REF_TYPE) {
+                parts.emplace_back(&Type::Ref(ParseType()));
             } else {
                 std::ostringstream error_ss;
                 error_ss << __LINE__ << ": Unexpected token: " << token;
@@ -1871,6 +1913,7 @@ class Parser {
             token = lexer_.NextToken();
 
             if (token.GetCategory() == Token::Category::DOT) {
+                lexer_.PutBackToken();
                 break;
             } else if (token.GetCategory() == Token::Category::CLOSE_PAREN ||
                        token.GetCategory() == Token::Category::CLOSE_BRACE ||
@@ -1967,6 +2010,15 @@ namespace type_checker {
 using parser::Term;
 using parser::Type;
 
+// Notes: Store typing is a mapping from store location to the type of values
+// that can be stored at that location. This enables us to avoid re-calculating
+// the type of a location every time a location is encountered in a term which
+// solves (for example) the problem of cyclic references. An example of cyclic
+// references:
+//
+// let r1 = (l x:Nat. 0) in
+// let r2 = (l x:Nat. !r1 x) in
+// (r1 := (l x:Nat. !r2 x); r2)
 class TypeChecker {
     using Context = std::deque<std::pair<std::string, Type*>>;
 
