@@ -67,7 +67,8 @@ std::vector<TestData> kData = {
               Token{Category::EQUAL}, Token{Category::ASSIGN}}},
 
     // Valid tokens (keywords):
-    TestData{"true false if else then 0 succ pred iszero Bool Nat let in ref",
+    TestData{"true false if else then 0 succ pred iszero Bool Nat let in ref "
+             "Ref unit Unit",
              {
                  Token{Category::CONSTANT_TRUE},
                  Token{Category::CONSTANT_FALSE},
@@ -87,6 +88,10 @@ std::vector<TestData> kData = {
                  Token{Category::KEYWORD_IN},
 
                  Token{Category::KEYWORD_REF},
+                 Token{Category::KEYWORD_REF_TYPE},
+
+                 Token{Category::CONSTANT_UNIT},
+                 Token{Category::KEYWORD_UNIT_TYPE},
              }},
 
     // Valid tokens (variables):
@@ -257,6 +262,7 @@ Term Assignment(Term&& lhs, Term&& rhs) {
     return term;
 }
 
+std::unique_ptr<Term> UnitUP() { return std::make_unique<Term>(Term::Unit()); }
 }  // namespace
 
 namespace parser {
@@ -1033,6 +1039,8 @@ void InitData() {
 
     kData.emplace_back(TestData{"iszero 0", IsZero(Term::Zero())});
 
+    kData.emplace_back(TestData{"unit", Term::Unit()});
+
     kData.emplace_back(TestData{
         "l x:(Bool->Bool)->Bool->(Bool->Bool). x",
         Lambda("x",
@@ -1252,6 +1260,14 @@ void InitData() {
         Assignment(
             Term::Application(VariableUP("a", 0), VariableUP("b", 1)),
             Term::Application(VariableUP("y", 24), VariableUP("z", 25)))});
+
+    kData.emplace_back(TestData{
+        "l x:Unit. x", Lambda("x", Type::Unit(), Term::Variable("x", 0))});
+
+    kData.emplace_back(TestData{
+        "(l x:Unit. x) unit",
+        Term::Application(LambdaUP("x", Type::Unit(), Term::Variable("x", 0)),
+                          UnitUP())});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
@@ -1561,6 +1577,13 @@ void InitData() {
         "l x: (Ref Bool -> Nat). 0",
         Type::Function(Type::Ref(Type::Function(Type::Bool(), Type::Nat())),
                        Type::Nat())});
+
+    kData.emplace_back(
+        TestData{"l x: Unit. x", Type::Function(Type::Unit(), Type::Unit())});
+
+    kData.emplace_back(TestData{"unit", Type::Unit()});
+
+    kData.emplace_back(TestData{"(l x: Unit. x) unit", Type::Unit()});
 }
 
 struct SubtypingTestData {
@@ -1941,6 +1964,11 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "{x=true}", {"{x=true}", Type::Record({{"x", Type::Bool()}})}});
+
+    kData.emplace_back(TestData{"unit", {"unit", Type::Unit()}});
+
+    kData.emplace_back(TestData{
+        "{x=unit}", {"{x=unit}", Type::Record({{"x", Type::Unit()}})}});
 }
 
 void Run() {

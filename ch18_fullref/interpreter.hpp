@@ -53,6 +53,9 @@ struct Token {
         KEYWORD_REF,
         KEYWORD_REF_TYPE,
 
+        CONSTANT_UNIT,
+        KEYWORD_UNIT_TYPE,
+
         MARKER_END,
         MARKER_INVALID,
     };
@@ -92,6 +95,8 @@ const std::string kKeywordLet = "let";
 const std::string kKeywordIn = "in";
 const std::string kKeywordRef = "ref";
 const std::string kKeywordRefType = "Ref";
+const std::string kKeywordUnit = "unit";
+const std::string kKeywordUnitType = "Unit";
 }  // namespace
 
 class Lexer {
@@ -147,6 +152,9 @@ class Lexer {
 
             {kKeywordRef, Token::Category::KEYWORD_REF},
             {kKeywordRefType, Token::Category::KEYWORD_REF_TYPE},
+
+            {kKeywordUnit, Token::Category::CONSTANT_UNIT},
+            {kKeywordUnitType, Token::Category::KEYWORD_UNIT_TYPE},
         };
 
         auto token_string = token_strings_[current_token_];
@@ -257,6 +265,9 @@ std::ostream& operator<<(std::ostream& out, Token token) {
         {Token::Category::KEYWORD_REF, "ref"},
         {Token::Category::KEYWORD_REF_TYPE, "Ref"},
 
+        {Token::Category::CONSTANT_UNIT, "unit"},
+        {Token::Category::KEYWORD_UNIT_TYPE, "Unit"},
+
         {Token::Category::MARKER_END, "<END>"},
         {Token::Category::MARKER_INVALID, "<INVALID>"},
     };
@@ -305,6 +316,12 @@ class Type {
 
     static Type& Nat() {
         static Type type(BaseType::NAT);
+
+        return type;
+    }
+
+    static Type& Unit() {
+        static Type type(BaseType::UNIT);
 
         return type;
     }
@@ -408,6 +425,10 @@ class Type {
         return category_ == TypeCategory::BASE && base_type_ == BaseType::NAT;
     }
 
+    bool IsUnit() const {
+        return category_ == TypeCategory::BASE && base_type_ == BaseType::UNIT;
+    }
+
     bool IsFunction() const { return category_ == TypeCategory::FUNCTION; }
 
     bool IsRecord() const { return category_ == TypeCategory::RECORD; }
@@ -451,6 +472,7 @@ class Type {
     enum class BaseType {
         BOOL,
         NAT,
+        UNIT,
     };
 
     Type() = default;
@@ -485,6 +507,8 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
         out << lexer::kKeywordBool;
     } else if (type.IsNat()) {
         out << lexer::kKeywordNat;
+    } else if (type.IsUnit()) {
+        out << lexer::kKeywordUnitType;
     } else if (type.IsFunction()) {
         out << "(" << *type.lhs_ << " "
             << lexer::Token(lexer::Token::Category::ARROW) << " " << *type.rhs_
@@ -639,6 +663,13 @@ class Term {
         return result;
     }
 
+    static Term Unit() {
+        Term result;
+        result.category_ = Category::UNIT;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term&) = delete;
@@ -683,6 +714,8 @@ class Term {
 
     bool IsAssignment() const { return category_ == Category::ASSIGNMENT; }
 
+    bool IsUnit() const { return category_ == Category::UNIT; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -693,7 +726,7 @@ class Term {
             return !application_lhs_ || !application_rhs_;
         } else if (IsIf()) {
             return !if_condition_ || !if_then_ || !if_else_;
-        } else if (IsTrue() || IsFalse() || IsConstantZero()) {
+        } else if (IsTrue() || IsFalse() || IsConstantZero() || IsUnit()) {
             return false;
         } else if (IsSucc()) {
             return !unary_op_arg_;
@@ -797,7 +830,7 @@ class Term {
                 throw std::invalid_argument(
                     "Trying to combine with iszero(...).");
             }
-        } else if (IsTrue() || IsFalse() || IsConstantZero()) {
+        } else if (IsTrue() || IsFalse() || IsConstantZero() || IsUnit()) {
             throw std::invalid_argument("Trying to combine with a constant.");
         } else if (IsRecord()) {
             if (is_complete_) {
@@ -1148,6 +1181,10 @@ class Term {
                    *assignment_rhs_ == *other.assignment_rhs_;
         }
 
+        if (IsUnit() && other.IsUnit()) {
+            return true;
+        }
+
         return false;
     }
 
@@ -1222,6 +1259,8 @@ class Term {
             out << prefix << ":=\n";
             out << assignment_lhs_->ASTString(indentation + 2) << "\n";
             out << assignment_rhs_->ASTString(indentation + 2);
+        } else if (IsUnit()) {
+            out << prefix << "unit";
         }
 
         return out.str();
@@ -1312,6 +1351,7 @@ class Term {
         REF,
         DEREF,
         ASSIGNMENT,
+        UNIT,
     };
 
     Category category_ = Category::EMPTY;
@@ -1401,6 +1441,8 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsAssignment()) {
         out << "(" << *term.assignment_lhs_ << ") := (" << *term.assignment_rhs_
             << ")";
+    } else if (term.IsUnit()) {
+        out << "unit";
     } else {
         out << "<ERROR>";
     }
@@ -1792,6 +1834,12 @@ class Parser {
                     break;
                 }
 
+                case Token::Category::CONSTANT_UNIT: {
+                    term_stack.back().Combine(Term::Unit());
+
+                    break;
+                }
+
                 default: {
                     std::ostringstream error_ss;
                     error_ss << __LINE__ << " Unexpected token: " << next_token;
@@ -1889,6 +1937,9 @@ class Parser {
                 parts.emplace_back(&Type::Bool());
             } else if (token.GetCategory() == Token::Category::KEYWORD_NAT) {
                 parts.emplace_back(&Type::Nat());
+            } else if (token.GetCategory() ==
+                       Token::Category::KEYWORD_UNIT_TYPE) {
+                parts.emplace_back(&Type::Unit());
             } else if (token.GetCategory() == Token::Category::OPEN_PAREN) {
                 parts.emplace_back(&ParseType());
 
@@ -2260,6 +2311,8 @@ class TypeChecker {
                     }
                 }
             }
+        } else if (term.IsUnit()) {
+            res = &Type::Unit();
         }
 
         return *res;
@@ -2434,7 +2487,8 @@ class Interpreter {
 
     bool IsValue(const Term& term) {
         return term.IsLambda() || term.IsVariable() || term.IsTrue() ||
-               term.IsFalse() || IsNatValue(term) || IsRecordValue(term);
+               term.IsFalse() || IsNatValue(term) || IsRecordValue(term) ||
+               term.IsUnit();
     }
 };
 }  // namespace interpreter
