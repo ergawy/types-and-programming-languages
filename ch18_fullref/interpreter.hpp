@@ -459,6 +459,14 @@ class Type {
         return record_fields_;
     }
 
+    Type& RefType() const {
+        if (!IsRef()) {
+            throw std::invalid_argument("Expected Ref type.");
+        }
+
+        return *ref_type_;
+    }
+
    private:
     enum class TypeCategory {
         BASE,
@@ -1107,6 +1115,14 @@ class Term {
     Term& LetBoundTerm() const { return *let_bound_term_; }
 
     Term& LetBodyTerm() const { return *let_body_term_; }
+
+    Term& RefTerm() const { return *ref_term_; }
+
+    Term& DerefTerm() const { return *deref_term_; }
+
+    Term& AssignmentLHS() const { return *assignment_lhs_; }
+
+    Term& AssignmentRHS() const { return *assignment_rhs_; }
 
     bool operator==(const Term& other) const {
         if (IsLambda() && other.IsLambda()) {
@@ -2313,6 +2329,25 @@ class TypeChecker {
             }
         } else if (term.IsUnit()) {
             res = &Type::Unit();
+        } else if (term.IsRef()) {
+            Type& ref_term_type = TypeOf(ctx, term.RefTerm());
+
+            if (!ref_term_type.IsIllTyped()) {
+                res = &Type::Ref(ref_term_type);
+            }
+        } else if (term.IsDeref()) {
+            Type& deref_term_type = TypeOf(ctx, term.DerefTerm());
+
+            if (deref_term_type.IsRef()) {
+                res = &deref_term_type.RefType();
+            }
+        } else if (term.IsAssignment()) {
+            Type& lhs_type = TypeOf(ctx, term.AssignmentLHS());
+            Type& rhs_type = TypeOf(ctx, term.AssignmentRHS());
+
+            if (lhs_type.IsRef() && lhs_type.RefType() == rhs_type) {
+                res = &Type::Unit();
+            }
         }
 
         return *res;

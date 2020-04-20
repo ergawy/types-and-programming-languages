@@ -1584,6 +1584,25 @@ void InitData() {
     kData.emplace_back(TestData{"unit", Type::Unit()});
 
     kData.emplace_back(TestData{"(l x: Unit. x) unit", Type::Unit()});
+
+    kData.emplace_back(TestData{"ref 0", Type::Ref(Type::Nat())});
+
+    kData.emplace_back(TestData{"let x = ref 0 in x := succ 0", Type::Unit()});
+
+    kData.emplace_back(
+        TestData{"let x = ref 0 in x := true", Type::IllTyped()});
+
+    kData.emplace_back(TestData{"let x = ref 0 in !x", Type::Nat()});
+
+    kData.emplace_back(
+        TestData{"l x:Ref Bool. !x",
+                 Type::Function(Type::Ref(Type::Bool()), Type::Bool())});
+
+    kData.emplace_back(
+        TestData{"l x:Bool. ref x",
+                 Type::Function(Type::Bool(), Type::Ref(Type::Bool()))});
+
+    kData.emplace_back(TestData{"(l x:Nat. ref x) 0", Type::Ref(Type::Nat())});
 }
 
 struct SubtypingTestData {
