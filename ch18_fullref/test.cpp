@@ -1269,6 +1269,11 @@ void InitData() {
         Term::Application(LambdaUP("x", Type::Unit(), Term::Variable("x", 0)),
                           UnitUP())});
 
+    kData.emplace_back(
+        TestData{"let x = ref true in let y = ref 0 in false",
+                 Let("x", Ref(Term::True()),
+                     Let("y", Ref(Term::Zero()), Term::False()))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
