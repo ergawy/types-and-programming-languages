@@ -1,8 +1,8 @@
-#include <iostream>
-
 #include "interpreter.hpp"
 
-int main(int argc, char* argv[]) {
+#include <iostream>
+
+int main(int argc, char *argv[]) {
     if (argc < 2) {
         std::cerr
             << "Error: expected input program as a command line argument.\n";
@@ -20,4 +20,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-

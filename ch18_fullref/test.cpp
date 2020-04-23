@@ -122,7 +122,7 @@ void Run() {
               << color::kReset;
     int num_failed = 0;
 
-    for (const auto& test : kData) {
+    for (const auto &test : kData) {
         Lexer lexer{std::istringstream{test.first}};
 
         bool failed = false;
@@ -181,15 +181,15 @@ std::unique_ptr<Term> ApplicationUP(std::unique_ptr<Term> lhs,
         Term::Application(std::move(lhs), std::move(rhs)));
 }
 
-Term Lambda(std::string arg_name, Type& type, Term&& body) {
+Term Lambda(std::string arg_name, Type &type, Term &&body) {
     return std::move(Term::Lambda(arg_name, type).Combine(std::move(body)));
 }
 
-std::unique_ptr<Term> LambdaUP(std::string arg_name, Type& type, Term&& body) {
+std::unique_ptr<Term> LambdaUP(std::string arg_name, Type &type, Term &&body) {
     return std::make_unique<Term>(Lambda(arg_name, type, std::move(body)));
 }
 
-Term If(Term&& condition, Term&& then_part, Term&& else_part) {
+Term If(Term &&condition, Term &&then_part, Term &&else_part) {
     auto term = Term::If();
     term.Combine(std::move(condition));
     term.Combine(std::move(then_part));
@@ -198,28 +198,28 @@ Term If(Term&& condition, Term&& then_part, Term&& else_part) {
     return term;
 }
 
-Term Succ(Term&& arg) {
+Term Succ(Term &&arg) {
     auto term = Term::Succ();
     term.Combine(std::move(arg));
 
     return term;
 }
 
-Term Pred(Term&& arg) {
+Term Pred(Term &&arg) {
     auto term = Term::Pred();
     term.Combine(std::move(arg));
 
     return term;
 }
 
-Term IsZero(Term&& arg) {
+Term IsZero(Term &&arg) {
     auto term = Term::IsZero();
     term.Combine(std::move(arg));
 
     return term;
 }
 
-Term Let(std::string binding_name, Term&& bound_term, Term&& body_term) {
+Term Let(std::string binding_name, Term &&bound_term, Term &&body_term) {
     auto term = Term::Let(binding_name);
     term.Combine(std::move(bound_term));
     term.Combine(std::move(body_term));
@@ -227,35 +227,35 @@ Term Let(std::string binding_name, Term&& bound_term, Term&& body_term) {
     return term;
 }
 
-std::unique_ptr<Term> LetUP(std::string binding_name, Term&& bound_term,
-                            Term&& body_term) {
+std::unique_ptr<Term> LetUP(std::string binding_name, Term &&bound_term,
+                            Term &&body_term) {
     return std::make_unique<Term>(
         Let(binding_name, std::move(bound_term), std::move(body_term)));
 }
 
-Term Ref(Term&& ref_term) {
+Term Ref(Term &&ref_term) {
     Term term = Term::Ref();
     term.Combine(std::move(ref_term));
 
     return term;
 }
 
-std::unique_ptr<Term> RefUP(Term&& ref_term) {
+std::unique_ptr<Term> RefUP(Term &&ref_term) {
     return std::make_unique<Term>(Ref(std::move(ref_term)));
 }
 
-Term Deref(Term&& deref_term) {
+Term Deref(Term &&deref_term) {
     Term term = Term::Deref();
     term.Combine(std::move(deref_term));
 
     return term;
 }
 
-std::unique_ptr<Term> DerefUP(Term&& deref_term) {
+std::unique_ptr<Term> DerefUP(Term &&deref_term) {
     return std::make_unique<Term>(Deref(std::move(deref_term)));
 }
 
-Term Assignment(Term&& lhs, Term&& rhs) {
+Term Assignment(Term &&lhs, Term &&rhs) {
     Term term = Term::Assignment(std::make_unique<Term>(std::move(lhs)));
     term.Combine(std::move(rhs));
 
@@ -1318,7 +1318,7 @@ void Run() {
               << color::kReset;
     int num_failed = 0;
 
-    for (const auto& test : kData) {
+    for (const auto &test : kData) {
         Parser parser{std::istringstream{test.input_program_}};
         Term res;
 
@@ -1341,7 +1341,7 @@ void Run() {
 
                 ++num_failed;
             }
-        } catch (std::exception& ex) {
+        } catch (std::exception &ex) {
             if (test.expected_ast_) {
                 // Unexpected parse error.
                 std::cout << color::kRed << "Test failed:" << color::kReset
@@ -1394,7 +1394,7 @@ using namespace utils::test;
 
 struct TestData {
     std::string input_program_;
-    Type& expected_type_;
+    Type &expected_type_;
 };
 
 std::vector<TestData> kData{};
@@ -1606,8 +1606,8 @@ void InitData() {
 }
 
 struct SubtypingTestData {
-    Type& s_;
-    Type& t_;
+    Type &s_;
+    Type &t_;
     bool expected_is_subtype_;
 };
 
@@ -1667,9 +1667,9 @@ void InitSubtypingData() {
 }
 
 struct JoinTestData {
-    Type& s_;
-    Type& t_;
-    Type& expected_join_type_;
+    Type &s_;
+    Type &t_;
+    Type &expected_join_type_;
 };
 
 std::vector<JoinTestData> kJoinData{};
@@ -1682,95 +1682,95 @@ void InitJoinData() {
         JoinTestData{Type::Bool(), Type::Nat(), Type::Top()});
 
     {
-        Type& s = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
-        Type& t = Type::Record({{"x", Type::Nat()}});
-        Type& j = t;
+        Type &s = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type &t = Type::Record({{"x", Type::Nat()}});
+        Type &j = t;
         kJoinData.emplace_back(JoinTestData{s, t, j});
     }
 
     {
-        Type& s = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
-        Type& t = Type::Record({{"x", Type::Nat()}, {"z", Type::Nat()}});
-        Type& j = Type::Record({{"x", Type::Nat()}});
+        Type &s = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type &t = Type::Record({{"x", Type::Nat()}, {"z", Type::Nat()}});
+        Type &j = Type::Record({{"x", Type::Nat()}});
         kJoinData.emplace_back(JoinTestData{s, t, j});
     }
 
     {
-        Type& s1 = Type::Bool();
-        Type& s2 = Type::Bool();
+        Type &s1 = Type::Bool();
+        Type &s2 = Type::Bool();
 
-        Type& t1 = Type::Bool();
-        Type& t2 = Type::Bool();
+        Type &t1 = Type::Bool();
+        Type &t2 = Type::Bool();
 
-        Type& s = Type::Function(s1, s2);
-        Type& t = Type::Function(t1, t2);
-        Type& j = Type::Function(t1, t2);
-
-        kJoinData.emplace_back(JoinTestData{s, t, j});
-    }
-
-    {
-        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
-        Type& s2 = Type::Bool();
-
-        Type& t1 = Type::Bool();
-        Type& t2 = Type::Bool();
-
-        Type& s = Type::Function(s1, s2);
-        Type& t = Type::Function(t1, t2);
-        Type& j = Type::IllTyped();
+        Type &s = Type::Function(s1, s2);
+        Type &t = Type::Function(t1, t2);
+        Type &j = Type::Function(t1, t2);
 
         kJoinData.emplace_back(JoinTestData{s, t, j});
     }
 
     {
-        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
-        Type& s2 = Type::Bool();
+        Type &s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type &s2 = Type::Bool();
 
-        Type& t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
-        Type& t2 = Type::Bool();
+        Type &t1 = Type::Bool();
+        Type &t2 = Type::Bool();
 
-        Type& j1 = Type::Record(
+        Type &s = Type::Function(s1, s2);
+        Type &t = Type::Function(t1, t2);
+        Type &j = Type::IllTyped();
+
+        kJoinData.emplace_back(JoinTestData{s, t, j});
+    }
+
+    {
+        Type &s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type &s2 = Type::Bool();
+
+        Type &t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
+        Type &t2 = Type::Bool();
+
+        Type &j1 = Type::Record(
             {{"x", Type::Nat()}, {"y", Type::Bool()}, {"z", Type::Bool()}});
 
-        Type& s = Type::Function(s1, s2);
-        Type& t = Type::Function(t1, t2);
-        Type& j = Type::Function(j1, t2);
+        Type &s = Type::Function(s1, s2);
+        Type &t = Type::Function(t1, t2);
+        Type &j = Type::Function(j1, t2);
 
         kJoinData.emplace_back(JoinTestData{s, t, j});
     }
 
     {
-        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
-        Type& s2 = Type::Bool();
+        Type &s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type &s2 = Type::Bool();
 
-        Type& t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
-        Type& t2 = Type::Nat();
+        Type &t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
+        Type &t2 = Type::Nat();
 
-        Type& j1 = Type::Record(
+        Type &j1 = Type::Record(
             {{"x", Type::Nat()}, {"y", Type::Bool()}, {"z", Type::Bool()}});
 
-        Type& s = Type::Function(s1, s2);
-        Type& t = Type::Function(t1, t2);
-        Type& j = Type::Function(j1, Type::Top());
+        Type &s = Type::Function(s1, s2);
+        Type &t = Type::Function(t1, t2);
+        Type &j = Type::Function(j1, Type::Top());
 
         kJoinData.emplace_back(JoinTestData{s, t, j});
     }
 
     {
-        Type& s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
-        Type& s2 = s1;
+        Type &s1 = Type::Record({{"x", Type::Nat()}, {"y", Type::Bool()}});
+        Type &s2 = s1;
 
-        Type& t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
-        Type& t2 = t1;
+        Type &t1 = Type::Record({{"x", Type::Nat()}, {"z", Type::Bool()}});
+        Type &t2 = t1;
 
-        Type& j1 = Type::Record(
+        Type &j1 = Type::Record(
             {{"x", Type::Nat()}, {"y", Type::Bool()}, {"z", Type::Bool()}});
-        Type& j2 = Type::Record({{"x", Type::Nat()}});
+        Type &j2 = Type::Record({{"x", Type::Nat()}});
 
-        Type& s = Type::Function(s1, s2);
-        Type& t = Type::Function(t1, t2);
-        Type& j = Type::Function(j1, j2);
+        Type &s = Type::Function(s1, s2);
+        Type &t = Type::Function(t1, t2);
+        Type &j = Type::Function(j1, j2);
 
         kJoinData.emplace_back(JoinTestData{s, t, j});
     }
@@ -1790,12 +1790,12 @@ void Run() {
               << color::kReset;
     int num_failed = 0;
 
-    for (const auto& test : kData) {
+    for (const auto &test : kData) {
         try {
             Parser parser{std::istringstream{test.input_program_}};
             Term program = parser.ParseProgram();
             TypeChecker type_checker;
-            Type& res = type_checker.TypeOf(program);
+            Type &res = type_checker.TypeOf(program);
 
             if (test.expected_type_ != res) {
                 std::cout << color::kRed << "Test failed:" << color::kReset
@@ -1812,7 +1812,7 @@ void Run() {
 
                 ++num_failed;
             }
-        } catch (std::exception& ex) {
+        } catch (std::exception &ex) {
             std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
 
             std::cout << "  Input program: " << test.input_program_ << "\n";
@@ -1832,7 +1832,7 @@ void Run() {
     TypeChecker type_checker;
 
     // Test subtyping.
-    for (const auto& test : kSubtypingData) {
+    for (const auto &test : kSubtypingData) {
         if (type_checker.IsSubtype(test.s_, test.t_) !=
             test.expected_is_subtype_) {
             std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
@@ -1849,8 +1849,8 @@ void Run() {
     }
 
     // Test join (least common supertype) calculation.
-    for (const auto& test : kJoinData) {
-        Type& actual_join_type = type_checker.Join(test.s_, test.t_);
+    for (const auto &test : kJoinData) {
+        Type &actual_join_type = type_checker.Join(test.s_, test.t_);
 
         if (actual_join_type != test.expected_join_type_) {
             std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
@@ -1883,7 +1883,7 @@ using namespace type_checker;
 
 struct TestData {
     std::string input_program_;
-    std::pair<std::string, Type&> expected_eval_result_;
+    std::pair<std::string, Type &> expected_eval_result_;
 };
 
 std::vector<TestData> kData{};
@@ -1988,6 +1988,26 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "{x=unit}", {"{x=unit}", Type::Record({{"x", Type::Unit()}})}});
+
+    kData.emplace_back(TestData{"ref 0", {"l[0]", Type::Ref(Type::Nat())}});
+
+    kData.emplace_back(
+        TestData{"ref succ 0", {"l[0]", Type::Ref(Type::Nat())}});
+
+    kData.emplace_back(TestData{"ref true", {"l[0]", Type::Ref(Type::Bool())}});
+
+    kData.emplace_back(
+        TestData{"ref pred succ 0", {"l[0]", Type::Ref(Type::Nat())}});
+
+    kData.emplace_back(TestData{"ref if true then 0 else succ 0",
+                                {"l[0]", Type::Ref(Type::Nat())}});
+
+    kData.emplace_back(TestData{
+        "ref l x:Nat. x",
+        {"l[0]", Type::Ref(Type::Function(Type::Nat(), Type::Nat()))}});
+
+    kData.emplace_back(TestData{"let x = ref true in let y = ref 0 in false",
+                                {"false", Type::Bool()}});
 }
 
 void Run() {
@@ -1997,7 +2017,7 @@ void Run() {
               << color::kReset;
     int num_failed = 0;
 
-    for (const auto& test : kData) {
+    for (const auto &test : kData) {
         Interpreter interpreter{};
 
         try {
@@ -2026,7 +2046,7 @@ void Run() {
                 ++num_failed;
             }
 
-        } catch (std::exception& ex) {
+        } catch (std::exception &ex) {
             std::cout << color::kRed << "Test failed:" << color::kReset << "\n";
 
             std::cout << "  Input program: " << test.input_program_ << "\n";

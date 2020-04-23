@@ -69,11 +69,11 @@ struct Token {
         : category_(category),
           text_(category == Category::IDENTIFIER ? text : "") {}
 
-    bool operator==(const Token& other) const {
+    bool operator==(const Token &other) const {
         return category_ == other.category_ && text_ == other.text_;
     }
 
-    bool operator!=(const Token& other) const { return !(*this == other); }
+    bool operator!=(const Token &other) const { return !(*this == other); }
 
     Category GetCategory() const { return category_; }
 
@@ -84,7 +84,7 @@ struct Token {
     std::string text_;
 };
 
-std::ostream& operator<<(std::ostream& out, Token token);
+std::ostream &operator<<(std::ostream &out, Token token);
 
 namespace {
 const std::string kLambdaInputSymbol = "l";
@@ -101,7 +101,7 @@ const std::string kKeywordUnitType = "Unit";
 
 class Lexer {
    public:
-    Lexer(std::istringstream&& in) {
+    Lexer(std::istringstream &&in) {
         std::istringstream iss(SurroundTokensBySpaces(std::move(in)));
         token_strings_ =
             std::vector<std::string>(std::istream_iterator<std::string>{iss},
@@ -177,7 +177,7 @@ class Lexer {
     }
 
    private:
-    std::string SurroundTokensBySpaces(std::istringstream&& in) {
+    std::string SurroundTokensBySpaces(std::istringstream &&in) {
         std::ostringstream processed_stream;
         char c;
 
@@ -229,7 +229,7 @@ class Lexer {
     int current_token_ = 0;
 };
 
-std::ostream& operator<<(std::ostream& out, Token token) {
+std::ostream &operator<<(std::ostream &out, Token token) {
     std::unordered_map<Token::Category, std::string> token_to_str = {
         {Token::Category::LAMBDA, "λ"},
 
@@ -292,46 +292,46 @@ std::ostream& operator<<(std::ostream& out, Token token) {
 namespace parser {
 
 class Type {
-    friend std::ostream& operator<<(std::ostream&, const Type&);
+    friend std::ostream &operator<<(std::ostream &, const Type &);
 
    public:
-    static Type& Top() {
+    static Type &Top() {
         static Type type;
         type.category_ = TypeCategory::TOP;
 
         return type;
     }
 
-    static Type& IllTyped() {
+    static Type &IllTyped() {
         static Type type;
 
         return type;
     }
 
-    static Type& Bool() {
+    static Type &Bool() {
         static Type type(BaseType::BOOL);
 
         return type;
     }
 
-    static Type& Nat() {
+    static Type &Nat() {
         static Type type(BaseType::NAT);
 
         return type;
     }
 
-    static Type& Unit() {
+    static Type &Unit() {
         static Type type(BaseType::UNIT);
 
         return type;
     }
 
-    static Type& Function(Type& lhs, Type& rhs) {
+    static Type &Function(Type &lhs, Type &rhs) {
         static std::vector<std::unique_ptr<Type>> type_pool;
 
         auto result =
             std::find_if(std::begin(type_pool), std::end(type_pool),
-                         [&](const std::unique_ptr<Type>& type) {
+                         [&](const std::unique_ptr<Type> &type) {
                              return type->lhs_ == &lhs && type->rhs_ == &rhs;
                          });
 
@@ -344,13 +344,13 @@ class Type {
         return *type_pool.back();
     }
 
-    using RecordFields = std::unordered_map<std::string, Type&>;
+    using RecordFields = std::unordered_map<std::string, Type &>;
 
-    static Type& Record(RecordFields fields) {
+    static Type &Record(RecordFields fields) {
         static std::vector<std::unique_ptr<Type>> type_pool;
 
         auto result = std::find_if(std::begin(type_pool), std::end(type_pool),
-                                   [&](const std::unique_ptr<Type>& type) {
+                                   [&](const std::unique_ptr<Type> &type) {
                                        return type->record_fields_ == fields;
                                    });
 
@@ -364,11 +364,11 @@ class Type {
         return *type_pool.back();
     }
 
-    static Type& Ref(Type& ref_type) {
+    static Type &Ref(Type &ref_type) {
         static std::vector<std::unique_ptr<Type>> type_pool;
 
         auto result = std::find_if(std::begin(type_pool), std::end(type_pool),
-                                   [&](const std::unique_ptr<Type>& type) {
+                                   [&](const std::unique_ptr<Type> &type) {
                                        return type->ref_type_ == &ref_type;
                                    });
 
@@ -381,15 +381,15 @@ class Type {
         return *type_pool.back();
     }
 
-    Type(const Type&) = delete;
-    Type& operator=(const Type&) = delete;
+    Type(const Type &) = delete;
+    Type &operator=(const Type &) = delete;
 
-    Type(Type&&) = delete;
-    Type& operator=(Type&&) = delete;
+    Type(Type &&) = delete;
+    Type &operator=(Type &&) = delete;
 
     ~Type() = default;
 
-    bool operator==(const Type& other) const {
+    bool operator==(const Type &other) const {
         if (category_ != other.category_) {
             return false;
         }
@@ -411,7 +411,7 @@ class Type {
         }
     }
 
-    bool operator!=(const Type& other) const { return !(*this == other); }
+    bool operator!=(const Type &other) const { return !(*this == other); }
 
     bool IsIllTyped() const { return category_ == TypeCategory::ILL; }
 
@@ -435,7 +435,7 @@ class Type {
 
     bool IsRef() const { return category_ == TypeCategory::REF; }
 
-    Type& FunctionLHS() const {
+    Type &FunctionLHS() const {
         if (!IsFunction()) {
             throw std::invalid_argument("Invalid function type.");
         }
@@ -443,7 +443,7 @@ class Type {
         return *lhs_;
     }
 
-    Type& FunctionRHS() const {
+    Type &FunctionRHS() const {
         if (!IsFunction()) {
             throw std::invalid_argument("Invalid function type.");
         }
@@ -451,7 +451,7 @@ class Type {
         return *rhs_;
     }
 
-    const RecordFields& GetRecordFields() const {
+    const RecordFields &GetRecordFields() const {
         if (!IsRecord()) {
             throw std::invalid_argument("Invalid record type.");
         }
@@ -459,7 +459,7 @@ class Type {
         return record_fields_;
     }
 
-    Type& RefType() const {
+    Type &RefType() const {
         if (!IsRef()) {
             throw std::invalid_argument("Expected Ref type.");
         }
@@ -488,27 +488,27 @@ class Type {
     Type(BaseType base_type)
         : base_type_(base_type), category_(TypeCategory::BASE) {}
 
-    Type(Type& lhs, Type& rhs)
+    Type(Type &lhs, Type &rhs)
         : lhs_(&lhs), rhs_(&rhs), category_(TypeCategory::FUNCTION) {}
 
     Type(RecordFields fields)
         : record_fields_(std::move(fields)), category_(TypeCategory::RECORD) {}
 
-    Type(Type* ref_type) : ref_type_(ref_type), category_(TypeCategory::REF) {}
+    Type(Type *ref_type) : ref_type_(ref_type), category_(TypeCategory::REF) {}
 
     TypeCategory category_ = TypeCategory::ILL;
 
     BaseType base_type_;
 
-    Type* lhs_ = nullptr;
-    Type* rhs_ = nullptr;
+    Type *lhs_ = nullptr;
+    Type *rhs_ = nullptr;
 
     RecordFields record_fields_{};
 
-    Type* ref_type_ = nullptr;
+    Type *ref_type_ = nullptr;
 };
 
-std::ostream& operator<<(std::ostream& out, const Type& type) {
+std::ostream &operator<<(std::ostream &out, const Type &type) {
     if (type.IsTop()) {
         out << lexer::kKeywordTop;
     } else if (type.IsBool()) {
@@ -525,7 +525,7 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
         out << "{";
 
         bool first = true;
-        for (auto& field : type.record_fields_) {
+        for (auto &field : type.record_fields_) {
             if (!first) {
                 out << ", ";
             }
@@ -545,10 +545,10 @@ std::ostream& operator<<(std::ostream& out, const Type& type) {
 }
 
 class Term {
-    friend std::ostream& operator<<(std::ostream&, const Term&);
+    friend std::ostream &operator<<(std::ostream &, const Term &);
 
    public:
-    static Term Lambda(std::string arg_name, Type& arg_type) {
+    static Term Lambda(std::string arg_name, Type &arg_type) {
         Term result;
         result.lambda_arg_name_ = arg_name;
         result.lambda_arg_type_ = &arg_type;
@@ -678,13 +678,21 @@ class Term {
         return result;
     }
 
+    static Term StoreLocation(int location) {
+        Term result;
+        result.category_ = Category::STORE_LOCATION;
+        result.store_location_ = location;
+
+        return result;
+    }
+
     Term() = default;
 
-    Term(const Term&) = delete;
-    Term& operator=(const Term&) = delete;
+    Term(const Term &) = delete;
+    Term &operator=(const Term &) = delete;
 
-    Term(Term&&) = default;
-    Term& operator=(Term&&) = default;
+    Term(Term &&) = default;
+    Term &operator=(Term &&) = default;
 
     ~Term() = default;
 
@@ -724,6 +732,10 @@ class Term {
 
     bool IsUnit() const { return category_ == Category::UNIT; }
 
+    bool IsStoreLocation() const {
+        return category_ == Category::STORE_LOCATION;
+    }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -734,7 +746,8 @@ class Term {
             return !application_lhs_ || !application_rhs_;
         } else if (IsIf()) {
             return !if_condition_ || !if_then_ || !if_else_;
-        } else if (IsTrue() || IsFalse() || IsConstantZero() || IsUnit()) {
+        } else if (IsTrue() || IsFalse() || IsConstantZero() || IsUnit() ||
+                   IsStoreLocation()) {
             return false;
         } else if (IsSucc()) {
             return !unary_op_arg_;
@@ -763,7 +776,7 @@ class Term {
 
     bool IsEmpty() const { return category_ == Category::EMPTY; }
 
-    Term& Combine(Term&& term) {
+    Term &Combine(Term &&term) {
         if (term.IsInvalid()) {
             throw std::invalid_argument(
                 "Term::Combine() received an invalid Term.");
@@ -936,9 +949,9 @@ class Term {
      * distance amount. For an example use, see Term::Substitute(int, Term&).
      */
     void Shift(int distance) {
-        std::function<void(int, Term&)> walk = [&distance, &walk](
-                                                   int binding_context_size,
-                                                   Term& term) {
+        std::function<void(int, Term &)> walk = [&distance, &walk](
+                                                    int binding_context_size,
+                                                    Term &term) {
             if (term.IsInvalid()) {
                 throw std::invalid_argument("Trying to shift an invalid term.");
             }
@@ -962,15 +975,15 @@ class Term {
      * Substitutes variable (that is, the de Brijun idex of a variable) with the
      * term sub.
      */
-    void Substitute(int variable, Term& sub) {
+    void Substitute(int variable, Term &sub) {
         if (IsInvalid() || sub.IsInvalid()) {
             throw std::invalid_argument(
                 "Trying to substitute using invalid terms.");
         }
 
-        std::function<void(int, Term&)> walk = [&variable, &sub, &walk](
-                                                   int binding_context_size,
-                                                   Term& term) {
+        std::function<void(int, Term &)> walk = [&variable, &sub, &walk](
+                                                    int binding_context_size,
+                                                    Term &term) {
             if (term.IsVariable()) {
                 // Adjust variable according to the current binding
                 // depth before comparing term's index.
@@ -1010,7 +1023,7 @@ class Term {
         walk(0, *this);
     }
 
-    Term& LambdaBody() const {
+    Term &LambdaBody() const {
         if (!IsLambda()) {
             throw std::invalid_argument("Invalid Lambda term.");
         }
@@ -1026,7 +1039,7 @@ class Term {
         return lambda_arg_name_;
     }
 
-    Type& LambdaArgType() const {
+    Type &LambdaArgType() const {
         if (!IsLambda()) {
             throw std::invalid_argument("Invalid Lambda term.");
         }
@@ -1050,7 +1063,7 @@ class Term {
         return de_bruijn_idx_;
     }
 
-    Term& ApplicationLHS() const {
+    Term &ApplicationLHS() const {
         if (!IsApplication()) {
             throw std::invalid_argument("Invalid application term.");
         }
@@ -1058,7 +1071,7 @@ class Term {
         return *application_lhs_;
     }
 
-    Term& ApplicationRHS() const {
+    Term &ApplicationRHS() const {
         if (!IsApplication()) {
             throw std::invalid_argument("Invalid application term.");
         }
@@ -1066,7 +1079,7 @@ class Term {
         return *application_rhs_;
     }
 
-    Term& IfCondition() const {
+    Term &IfCondition() const {
         if (!IsIf()) {
             throw std::invalid_argument("Invalid if term.");
         }
@@ -1074,7 +1087,7 @@ class Term {
         return *if_condition_;
     }
 
-    Term& IfThen() const {
+    Term &IfThen() const {
         if (!IsIf()) {
             throw std::invalid_argument("Invalid if term.");
         }
@@ -1082,7 +1095,7 @@ class Term {
         return *if_then_;
     }
 
-    Term& IfElse() const {
+    Term &IfElse() const {
         if (!IsIf()) {
             throw std::invalid_argument("Invalid if term.");
         }
@@ -1090,7 +1103,7 @@ class Term {
         return *if_else_;
     }
 
-    Term& UnaryOpArg() const {
+    Term &UnaryOpArg() const {
         if (!IsSucc() && !IsPred() && !IsIsZero()) {
             throw std::invalid_argument("yyyInvalid term.");
         }
@@ -1098,33 +1111,33 @@ class Term {
         return *unary_op_arg_;
     }
 
-    const std::vector<std::string>& RecordLabels() const {
+    const std::vector<std::string> &RecordLabels() const {
         return record_labels_;
     }
 
-    const std::vector<std::unique_ptr<Term>>& RecordTerms() const {
+    const std::vector<std::unique_ptr<Term>> &RecordTerms() const {
         return record_terms_;
     }
 
-    Term& ProjectionTerm() const { return *projection_term_; }
+    Term &ProjectionTerm() const { return *projection_term_; }
 
     std::string ProjectionLabel() const { return projection_label_; }
 
     std::string LetBindingName() const { return let_binding_name_; }
 
-    Term& LetBoundTerm() const { return *let_bound_term_; }
+    Term &LetBoundTerm() const { return *let_bound_term_; }
 
-    Term& LetBodyTerm() const { return *let_body_term_; }
+    Term &LetBodyTerm() const { return *let_body_term_; }
 
-    Term& RefTerm() const { return *ref_term_; }
+    Term &RefTerm() const { return *ref_term_; }
 
-    Term& DerefTerm() const { return *deref_term_; }
+    Term &DerefTerm() const { return *deref_term_; }
 
-    Term& AssignmentLHS() const { return *assignment_lhs_; }
+    Term &AssignmentLHS() const { return *assignment_lhs_; }
 
-    Term& AssignmentRHS() const { return *assignment_rhs_; }
+    Term &AssignmentRHS() const { return *assignment_rhs_; }
 
-    bool operator==(const Term& other) const {
+    bool operator==(const Term &other) const {
         if (IsLambda() && other.IsLambda()) {
             return LambdaArgType() == other.LambdaArgType() &&
                    LambdaBody() == other.LambdaBody();
@@ -1204,7 +1217,7 @@ class Term {
         return false;
     }
 
-    bool operator!=(const Term& other) const { return !(*this == other); }
+    bool operator!=(const Term &other) const { return !(*this == other); }
 
     std::string ASTString(int indentation = 0) const {
         std::ostringstream out;
@@ -1277,6 +1290,8 @@ class Term {
             out << assignment_rhs_->ASTString(indentation + 2);
         } else if (IsUnit()) {
             out << prefix << "unit";
+        } else if (IsStoreLocation()) {
+            out << prefix << "l[" << store_location_ << "]";
         }
 
         return out.str();
@@ -1368,12 +1383,14 @@ class Term {
         DEREF,
         ASSIGNMENT,
         UNIT,
+
+        STORE_LOCATION,
     };
 
     Category category_ = Category::EMPTY;
 
     std::string lambda_arg_name_ = "";
-    Type* lambda_arg_type_ = nullptr;
+    Type *lambda_arg_type_ = nullptr;
     std::unique_ptr<Term> lambda_body_{};
     // Marks whether parsing for the body of the lambda term is finished or not.
 
@@ -1405,9 +1422,11 @@ class Term {
 
     std::unique_ptr<Term> assignment_lhs_{};
     std::unique_ptr<Term> assignment_rhs_{};
+
+    int store_location_;
 };
 
-std::ostream& operator<<(std::ostream& out, const Term& term) {
+std::ostream &operator<<(std::ostream &out, const Term &term) {
     if (term.IsInvalid()) {
         out << "<INVALID>";
     } else if (term.IsVariable()) {
@@ -1453,12 +1472,14 @@ std::ostream& operator<<(std::ostream& out, const Term& term) {
     } else if (term.IsRef()) {
         out << "ref " << *term.ref_term_;
     } else if (term.IsDeref()) {
-        out << "! " << *term.deref_term_;
+        out << "!" << *term.deref_term_;
     } else if (term.IsAssignment()) {
         out << "(" << *term.assignment_lhs_ << ") := (" << *term.assignment_rhs_
             << ")";
     } else if (term.IsUnit()) {
         out << "unit";
+    } else if (term.IsStoreLocation()) {
+        out << "l[" << term.store_location_ << "]";
     } else {
         out << "<ERROR>";
     }
@@ -1470,7 +1491,7 @@ class Parser {
     using Token = lexer::Token;
 
    public:
-    Parser(std::istringstream&& in) : lexer_(std::move(in)) {}
+    Parser(std::istringstream &&in) : lexer_(std::move(in)) {}
 
     Term ParseProgram() {
         Token next_token;
@@ -1880,9 +1901,9 @@ class Parser {
         return std::move(term_stack.back());
     }
 
-    void UnwindStack(std::vector<Term>& term_stack,
-                     std::vector<int>& stack_size_on_open_paren,
-                     std::vector<std::string>& bound_variables) {
+    void UnwindStack(std::vector<Term> &term_stack,
+                     std::vector<int> &stack_size_on_open_paren,
+                     std::vector<std::string> &bound_variables) {
         while (!term_stack.empty() && !stack_size_on_open_paren.empty() &&
                term_stack.size() > stack_size_on_open_paren.back()) {
             if (term_stack.back().IsLambda() &&
@@ -1909,7 +1930,7 @@ class Parser {
         }
     }
 
-    void CombineStackTop(std::vector<Term>& term_stack) {
+    void CombineStackTop(std::vector<Term> &term_stack) {
         if (term_stack.size() < 2) {
             throw std::invalid_argument(
                 "Invalid term: probably because a ( is not matched by a )");
@@ -1920,7 +1941,7 @@ class Parser {
         term_stack.back().Combine(std::move(top));
     }
 
-    std::pair<std::string, Type&> ParseLambdaArg() {
+    std::pair<std::string, Type &> ParseLambdaArg() {
         auto token = lexer_.NextToken();
 
         if (token.GetCategory() != Token::Category::IDENTIFIER) {
@@ -1934,7 +1955,7 @@ class Parser {
             throw std::invalid_argument("Expected to parse a ':'.");
         }
 
-        Type& type = ParseType();
+        Type &type = ParseType();
         token = lexer_.NextToken();
 
         if (token.GetCategory() != Token::Category::DOT) {
@@ -1944,8 +1965,8 @@ class Parser {
         return {arg_name, type};
     }
 
-    Type& ParseType() {
-        std::vector<Type*> parts;
+    Type &ParseType() {
+        std::vector<Type *> parts;
         while (true) {
             auto token = lexer_.NextToken();
 
@@ -2002,7 +2023,7 @@ class Parser {
         return *parts[0];
     }
 
-    Type& ParseRecordType() {
+    Type &ParseRecordType() {
         Token token = lexer_.NextToken();
 
         if (token.GetCategory() != Token::Category::OPEN_BRACE) {
@@ -2031,7 +2052,7 @@ class Parser {
                 throw std::invalid_argument(error_ss.str());
             }
 
-            Type& type = ParseType();
+            Type &type = ParseType();
             token = lexer_.NextToken();
             fields.insert({field_id, type});
 
@@ -2057,7 +2078,7 @@ class Parser {
     }
 
     Token::IdentifieySubCategory CalculateIdentifierSubCategoryFromContext(
-        Token token, const std::vector<Term>& term_stack) {
+        Token token, const std::vector<Term> &term_stack) {
         assert(token.GetCategory() == Token::Category::IDENTIFIER);
 
         if (term_stack.back().IsRecord() &&
@@ -2087,10 +2108,10 @@ using parser::Type;
 // let r2 = (l x:Nat. !r1 x) in
 // (r1 := (l x:Nat. !r2 x); r2)
 class TypeChecker {
-    using Context = std::deque<std::pair<std::string, Type*>>;
+    using Context = std::deque<std::pair<std::string, Type *>>;
 
    public:
-    Type& TypeOf(const Term& term) {
+    Type &TypeOf(const Term &term) {
         Context ctx;
         return TypeOf(ctx, term);
     }
@@ -2100,16 +2121,16 @@ class TypeChecker {
      *
      * @return true of \p s is sub-type of \p t, false otherwise.
      */
-    bool IsSubtype(const Type& s, const Type& t) {
+    bool IsSubtype(const Type &s, const Type &t) {
         if (s == t) {
             return true;
         }
 
         if (s.IsRecord() && t.IsRecord()) {
-            for (const auto& t_field : t.GetRecordFields()) {
+            for (const auto &t_field : t.GetRecordFields()) {
                 bool found_t_field_in_s = false;
 
-                for (const auto& s_field : s.GetRecordFields()) {
+                for (const auto &s_field : s.GetRecordFields()) {
                     if (t_field.first == s_field.first &&
                         IsSubtype(s_field.second, t_field.second)) {
                         found_t_field_in_s = true;
@@ -2139,19 +2160,19 @@ class TypeChecker {
      * For example, if s == {x:Nat, y:Bool}, and t == {x:Nat, z:Bool}, then the
      * method returns {x:Nat}.
      */
-    Type& Join(Type& s, Type& t) {
+    Type &Join(Type &s, Type &t) {
         if (s == t) {
             return s;
         }
 
         if (s.IsFunction() && t.IsFunction()) {
-            Type& s1 = s.FunctionLHS();
-            Type& s2 = s.FunctionRHS();
-            Type& t1 = t.FunctionLHS();
-            Type& t2 = t.FunctionRHS();
+            Type &s1 = s.FunctionLHS();
+            Type &s2 = s.FunctionRHS();
+            Type &t1 = t.FunctionLHS();
+            Type &t2 = t.FunctionRHS();
 
-            Type& m1 = Meet(s1, t1);
-            Type& j2 = Join(s2, t2);
+            Type &m1 = Meet(s1, t1);
+            Type &j2 = Join(s2, t2);
 
             if (m1.IsIllTyped()) {
                 return Type::IllTyped();
@@ -2163,7 +2184,7 @@ class TypeChecker {
         if (s.IsRecord() && t.IsRecord()) {
             Type::RecordFields join_fields;
 
-            for (auto& s_field : s.GetRecordFields()) {
+            for (auto &s_field : s.GetRecordFields()) {
                 auto t_iter = t.GetRecordFields().find(s_field.first);
 
                 if (t_iter != std::end(t.GetRecordFields())) {
@@ -2186,7 +2207,7 @@ class TypeChecker {
      * method returns {x:Nat, y:Bool, z:Bool}.
 
      */
-    Type& Meet(Type& s, Type& t) {
+    Type &Meet(Type &s, Type &t) {
         if (s == t) {
             return s;
         }
@@ -2200,13 +2221,13 @@ class TypeChecker {
         }
 
         if (s.IsFunction() && t.IsFunction()) {
-            Type& s1 = s.FunctionLHS();
-            Type& s2 = s.FunctionRHS();
-            Type& t1 = t.FunctionLHS();
-            Type& t2 = t.FunctionRHS();
+            Type &s1 = s.FunctionLHS();
+            Type &s2 = s.FunctionRHS();
+            Type &t1 = t.FunctionLHS();
+            Type &t2 = t.FunctionRHS();
 
-            Type& j1 = Join(s1, t1);
-            Type& m2 = Meet(s2, t2);
+            Type &j1 = Join(s1, t1);
+            Type &m2 = Meet(s2, t2);
 
             if (m2.IsIllTyped()) {
                 return Type::IllTyped();
@@ -2218,11 +2239,11 @@ class TypeChecker {
         if (s.IsRecord() && t.IsRecord()) {
             Type::RecordFields meet_fields;
 
-            for (auto& s_field : s.GetRecordFields()) {
+            for (auto &s_field : s.GetRecordFields()) {
                 auto t_iter = t.GetRecordFields().find(s_field.first);
 
                 if (t_iter != std::end(t.GetRecordFields())) {
-                    Type& m = Meet(s_field.second, t_iter->second);
+                    Type &m = Meet(s_field.second, t_iter->second);
 
                     if (m.IsIllTyped()) {
                         return Type::IllTyped();
@@ -2234,7 +2255,7 @@ class TypeChecker {
                 }
             }
 
-            for (auto& t_field : t.GetRecordFields()) {
+            for (auto &t_field : t.GetRecordFields()) {
                 auto s_iter = s.GetRecordFields().find(t_field.first);
 
                 if (s_iter == std::end(s.GetRecordFields())) {
@@ -2249,8 +2270,8 @@ class TypeChecker {
     }
 
    private:
-    Type& TypeOf(const Context& ctx, const Term& term) {
-        Type* res = &Type::IllTyped();
+    Type &TypeOf(const Context &ctx, const Term &term) {
+        Type *res = &Type::IllTyped();
 
         if (term.IsTrue() || term.IsFalse()) {
             res = &Type::Bool();
@@ -2258,18 +2279,18 @@ class TypeChecker {
             res = &Type::Nat();
         } else if (term.IsIf()) {
             if (TypeOf(ctx, term.IfCondition()) == Type::Bool()) {
-                Type& then_type = TypeOf(ctx, term.IfThen());
-                Type& else_type = TypeOf(ctx, term.IfElse());
+                Type &then_type = TypeOf(ctx, term.IfThen());
+                Type &else_type = TypeOf(ctx, term.IfElse());
                 return Join(then_type, else_type);
             }
         } else if (term.IsSucc() || term.IsPred()) {
-            auto& subterm_type = TypeOf(ctx, term.UnaryOpArg());
+            auto &subterm_type = TypeOf(ctx, term.UnaryOpArg());
 
             if (subterm_type == Type::Nat()) {
                 res = &Type::Nat();
             }
         } else if (term.IsIsZero()) {
-            auto& subterm_type = TypeOf(ctx, term.UnaryOpArg());
+            auto &subterm_type = TypeOf(ctx, term.UnaryOpArg());
 
             if (subterm_type == Type::Nat()) {
                 res = &Type::Bool();
@@ -2277,17 +2298,17 @@ class TypeChecker {
         } else if (term.IsLambda()) {
             Context new_ctx =
                 AddBinding(ctx, term.LambdaArgName(), term.LambdaArgType());
-            Type& return_type = TypeOf(new_ctx, term.LambdaBody());
+            Type &return_type = TypeOf(new_ctx, term.LambdaBody());
             res = &Type::Function(term.LambdaArgType(), return_type);
         } else if (term.IsLet()) {
             Context new_ctx =
                 AddBinding(ctx, term.LetBindingName(), Type::IllTyped());
-            Type& let_bound_type = TypeOf(new_ctx, term.LetBoundTerm());
+            Type &let_bound_type = TypeOf(new_ctx, term.LetBoundTerm());
             new_ctx[0].second = &let_bound_type;
             res = &TypeOf(new_ctx, term.LetBodyTerm());
         } else if (term.IsApplication()) {
-            Type& lhs_type = TypeOf(ctx, term.ApplicationLHS());
-            Type& rhs_type = TypeOf(ctx, term.ApplicationRHS());
+            Type &lhs_type = TypeOf(ctx, term.ApplicationLHS());
+            Type &rhs_type = TypeOf(ctx, term.ApplicationRHS());
 
             if (lhs_type.IsFunction() &&
                 IsSubtype(rhs_type, lhs_type.FunctionLHS())) {
@@ -2304,7 +2325,7 @@ class TypeChecker {
             Type::RecordFields record_type_fields;
 
             for (int i = 0; i < term.RecordLabels().size(); ++i) {
-                Type& field_type = TypeOf(ctx, *term.RecordTerms()[i]);
+                Type &field_type = TypeOf(ctx, *term.RecordTerms()[i]);
 
                 if (field_type.IsIllTyped()) {
                     break;
@@ -2317,10 +2338,10 @@ class TypeChecker {
                 res = &Type::Record(record_type_fields);
             }
         } else if (term.IsProjection()) {
-            Type& term_type = TypeOf(ctx, term.ProjectionTerm());
+            Type &term_type = TypeOf(ctx, term.ProjectionTerm());
 
             if (term_type.IsRecord()) {
-                for (auto& field : term_type.GetRecordFields()) {
+                for (auto &field : term_type.GetRecordFields()) {
                     if (field.first == term.ProjectionLabel()) {
                         res = &field.second;
                         break;
@@ -2330,20 +2351,20 @@ class TypeChecker {
         } else if (term.IsUnit()) {
             res = &Type::Unit();
         } else if (term.IsRef()) {
-            Type& ref_term_type = TypeOf(ctx, term.RefTerm());
+            Type &ref_term_type = TypeOf(ctx, term.RefTerm());
 
             if (!ref_term_type.IsIllTyped()) {
                 res = &Type::Ref(ref_term_type);
             }
         } else if (term.IsDeref()) {
-            Type& deref_term_type = TypeOf(ctx, term.DerefTerm());
+            Type &deref_term_type = TypeOf(ctx, term.DerefTerm());
 
             if (deref_term_type.IsRef()) {
                 res = &deref_term_type.RefType();
             }
         } else if (term.IsAssignment()) {
-            Type& lhs_type = TypeOf(ctx, term.AssignmentLHS());
-            Type& rhs_type = TypeOf(ctx, term.AssignmentRHS());
+            Type &lhs_type = TypeOf(ctx, term.AssignmentLHS());
+            Type &rhs_type = TypeOf(ctx, term.AssignmentRHS());
 
             if (lhs_type.IsRef() && lhs_type.RefType() == rhs_type) {
                 res = &Type::Unit();
@@ -2353,8 +2374,8 @@ class TypeChecker {
         return *res;
     }
 
-    Context AddBinding(const Context& current_ctx, std::string var_name,
-                       Type& type) {
+    Context AddBinding(const Context &current_ctx, std::string var_name,
+                       Type &type) {
         Context new_ctx = current_ctx;
         new_ctx.push_front({var_name, &type});
 
@@ -2364,12 +2385,14 @@ class TypeChecker {
 }  // namespace type_checker
 
 namespace interpreter {
+using namespace type_checker;
+
 class Interpreter {
     using Term = parser::Term;
 
    public:
-    std::pair<std::string, type_checker::Type&> Interpret(Term& program) {
-        type_checker::Type& type = type_checker::TypeChecker().TypeOf(program);
+    std::pair<std::string, Type &> Interpret(Term &program) {
+        Type &type = type_checker_.TypeOf(program);
 
         if (!type.IsIllTyped()) {
             Eval(program);
@@ -2381,32 +2404,23 @@ class Interpreter {
         auto term_str = ss.str();
 
         if (IsNatValue(program)) {
-            std::size_t start_pos = 0;
-            int num = 0;
-
-            while ((start_pos = term_str.find("succ", start_pos)) !=
-                   std::string::npos) {
-                ++num;
-                ++start_pos;
-            }
-
-            term_str = std::to_string(num);
+            term_str = std::to_string(ConvertNatValueToDecimal(program));
         }
 
         return {term_str, type};
     }
 
    private:
-    void Eval(Term& term) {
+    void Eval(Term &term) {
         try {
             Eval1(term);
             Eval(term);
-        } catch (std::invalid_argument&) {
+        } catch (std::invalid_argument &) {
         }
     }
 
-    void Eval1(Term& term) {
-        auto term_subst_top = [](Term& s, Term& t) {
+    void Eval1(Term &term) {
+        auto term_subst_top = [](Term &s, Term &t) {
             // Adjust the free variables in s by increasing their static
             // distances by 1. That's because s will now be embedded one level
             // deeper in t (i.e. t's bound variable will be replaced by s).
@@ -2444,7 +2458,7 @@ class Interpreter {
         } else if (term.IsSucc()) {
             Eval1(term.UnaryOpArg());
         } else if (term.IsPred()) {
-            auto& pred_arg = term.UnaryOpArg();
+            auto &pred_arg = term.UnaryOpArg();
 
             if (pred_arg.IsConstantZero()) {
                 std::swap(term, term.UnaryOpArg());
@@ -2458,7 +2472,7 @@ class Interpreter {
                 Eval1(pred_arg);
             }
         } else if (term.IsIsZero()) {
-            auto& iszero_arg = term.UnaryOpArg();
+            auto &iszero_arg = term.UnaryOpArg();
 
             if (iszero_arg.IsConstantZero()) {
                 auto temp = Term::True();
@@ -2474,7 +2488,7 @@ class Interpreter {
                 Eval1(iszero_arg);
             }
         } else if (term.IsProjection()) {
-            Term& projection_term = term.ProjectionTerm();
+            Term &projection_term = term.ProjectionTerm();
 
             if (IsRecordValue(projection_term)) {
                 for (int i = 0; i < projection_term.RecordLabels().size();
@@ -2490,28 +2504,36 @@ class Interpreter {
                 Eval1(projection_term);
             }
         } else if (term.IsRecord() && !IsRecordValue(term)) {
-            for (auto& record_term : term.RecordTerms()) {
+            for (auto &record_term : term.RecordTerms()) {
                 if (!IsValue(*record_term)) {
                     Eval1(*record_term);
                     break;
                 }
             }
+        } else if (term.IsRef() && IsValue(term.RefTerm())) {
+            // Allocate a new store location for the value.
+            Type &referenced_term_type = type_checker_.TypeOf(term.RefTerm());
+            int store_location = StoreValue(term.RefTerm());
+            Term new_term = Term::StoreLocation(store_location);
+            std::swap(term, new_term);
+        } else if (term.IsRef()) {
+            Eval1(term.RefTerm());
         } else {
             throw std::invalid_argument("No applicable rule.");
         }
     }
 
-    bool IsNatValue(const Term& term) {
+    bool IsNatValue(const Term &term) {
         return term.IsConstantZero() ||
                (term.IsSucc() && IsNatValue(term.UnaryOpArg()));
     }
 
-    bool IsRecordValue(const Term& term) {
+    bool IsRecordValue(const Term &term) {
         if (!term.IsRecord()) {
             return false;
         }
 
-        for (auto& record_term : term.RecordTerms()) {
+        for (auto &record_term : term.RecordTerms()) {
             if (!IsValue(*record_term)) {
                 return false;
             }
@@ -2520,10 +2542,86 @@ class Interpreter {
         return true;
     }
 
-    bool IsValue(const Term& term) {
-        return term.IsLambda() || term.IsVariable() || term.IsTrue() ||
-               term.IsFalse() || IsNatValue(term) || IsRecordValue(term) ||
-               term.IsUnit();
+    bool IsValue(const Term &term) {
+        return term.IsLambda() || term.IsTrue() || term.IsFalse() ||
+               IsNatValue(term) || IsRecordValue(term) || term.IsUnit() ||
+               term.IsStoreLocation();
     }
+
+    int StoreValue(const Term &term) {
+        int location = first_free_store_location_;
+
+        if (term.IsFalse()) {
+            store_.push_back(0);
+            ++first_free_store_location_;
+        } else if (term.IsTrue()) {
+            store_.push_back(1);
+            ++first_free_store_location_;
+        } else if (term.IsUnit()) {
+            store_.push_back(2);
+            ++first_free_store_location_;
+        } else if (IsNatValue(term)) {
+            int convereted_term = ConvertNatValueToDecimal(term);
+
+            for (int i = 0; i < sizeof(int); ++i) {
+                store_.push_back(
+                    static_cast<unsigned char>(convereted_term & 0xFF));
+                convereted_term >>= 8;
+            }
+
+            first_free_store_location_ += sizeof(int);
+        } else if (term.IsLambda()) {
+            unsigned long term_ptr = reinterpret_cast<unsigned long>(&term);
+
+            for (int i = 0; i < sizeof(void *); ++i) {
+                store_.push_back(static_cast<unsigned char>(term_ptr & 0xFF));
+                term_ptr >>= 8;
+            }
+
+            first_free_store_location_ += sizeof(void *);
+        } else if (IsRecordValue(term)) {
+            for (auto &record_term : term.RecordTerms()) {
+                StoreValue(*record_term);
+            }
+        } else {
+            std::ostringstream ss;
+            ss << "Trying to store a non-value term: " << term;
+            throw std::invalid_argument(ss.str());
+        }
+
+        return location;
+    }
+
+    int ConvertNatValueToDecimal(const Term &nat_val) {
+        if (!IsNatValue(nat_val)) {
+            throw std::logic_error(
+                "Trying to convert a non-Nat value to decimal.");
+        }
+
+        std::ostringstream ss;
+        ss << nat_val;
+
+        auto term_str = ss.str();
+
+        std::size_t start_pos = 0;
+        int num = 0;
+
+        while ((start_pos = term_str.find("succ", start_pos)) !=
+               std::string::npos) {
+            ++num;
+            ++start_pos;
+        }
+
+        return num;
+    }
+
+   private:
+    TypeChecker type_checker_;
+
+    // Provides a store for referenced values. The store is little endian, a
+    // multi-byte value store with its least significant byte first and its most
+    // significant byte last.
+    std::vector<unsigned char> store_;
+    int first_free_store_location_ = 0;
 };
 }  // namespace interpreter
