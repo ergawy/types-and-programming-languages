@@ -1274,6 +1274,10 @@ void InitData() {
                  Let("x", Ref(Term::True()),
                      Let("y", Ref(Term::Zero()), Term::False()))});
 
+    kData.emplace_back(
+        TestData{"!ref l x:Nat. x",
+                 Deref(Ref(Lambda("x", Type::Nat(), Term::Variable("x", 0))))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1608,6 +1612,14 @@ void InitData() {
                  Type::Function(Type::Bool(), Type::Ref(Type::Bool()))});
 
     kData.emplace_back(TestData{"(l x:Nat. ref x) 0", Type::Ref(Type::Nat())});
+
+    kData.emplace_back(
+        TestData{"!ref l x:Nat. x", Type::Function(Type::Nat(), Type::Nat())});
+
+    kData.emplace_back(
+        TestData{"!ref l x:Nat. !ref l y:Bool. y",
+                 Type::Function(Type::Nat(),
+                                Type::Function(Type::Bool(), Type::Bool()))});
 }
 
 struct SubtypingTestData {
@@ -2013,6 +2025,27 @@ void InitData() {
 
     kData.emplace_back(TestData{"let x = ref true in let y = ref 0 in false",
                                 {"false", Type::Bool()}});
+
+    kData.emplace_back(TestData{"!ref unit", {"unit", Type::Unit()}});
+
+    kData.emplace_back(TestData{"!ref succ 0", {"1", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"!ref l x:Nat. x",
+                 {"{l x : Nat. x}", Type::Function(Type::Nat(), Type::Nat())}});
+
+    kData.emplace_back(
+        TestData{"!ref l x:Nat. !ref l y:Bool. y",
+                 {"{l x : Nat. !ref {l y : Bool. y}}",
+                  Type::Function(Type::Nat(),
+                                 Type::Function(Type::Bool(), Type::Bool()))}});
+
+    // TODO: How should the following case be handled:
+    //   (!({l x : Nat. ref {l y : Bool. x}} <- 0) <- true): Nat
+    // In that case, an captured variable 'x' is accessed by the inner lambda.
+    // At time of capture, 'x' was bound to the enclosing lambda. When the
+    // enclosed lambda is dereferenced later on, 'x' is no longer part of the
+    // binding context but a free variable; which is wrong.
 }
 
 void Run() {
