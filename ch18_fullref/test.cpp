@@ -1939,7 +1939,7 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) if false then true else l x:Bool. x",
-        {"({l x : Bool. x} <- if (false) then (true) else ({l x : Bool. x}))",
+        {"({l x : Bool. x}) <- (if (false) then (true) else ({l x : Bool. x}))",
          Type::IllTyped()}});
 
     kData.emplace_back(TestData{"(l x:Bool. if x then true else false) true",
@@ -2040,12 +2040,19 @@ void InitData() {
                   Type::Function(Type::Nat(),
                                  Type::Function(Type::Bool(), Type::Bool()))}});
 
-    // TODO: How should the following case be handled:
-    //   (!({l x : Nat. ref {l y : Bool. x}} <- 0) <- true): Nat
-    // In that case, an captured variable 'x' is accessed by the inner lambda.
-    // At time of capture, 'x' was bound to the enclosing lambda. When the
-    // enclosed lambda is dereferenced later on, 'x' is no longer part of the
-    // binding context but a free variable; which is wrong.
+    kData.emplace_back(
+        TestData{"let x = ref 0 in let y = x in !x", {"0", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"let x = ref succ 0 in let y = x in !y", {"1", Type::Nat()}});
+
+    kData.emplace_back(TestData{"(l x:Ref Nat. !x) ref 0", {"0", Type::Nat()}});
+
+    kData.emplace_back(TestData{
+        "let x = ref 0 in ((l y:Unit. !x) (x := succ 0))", {"1", Type::Nat()}});
+
+    kData.emplace_back(TestData{
+        "!((l x:Nat. ref l y:Unit. x) succ succ 0) unit", {"2", Type::Nat()}});
 }
 
 void Run() {

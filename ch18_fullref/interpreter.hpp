@@ -1037,6 +1037,13 @@ class Term {
             } else if (term.IsLet()) {
                 walk(binding_context_size, *term.let_bound_term_);
                 walk(binding_context_size, *term.let_body_term_);
+            } else if (term.IsRef()) {
+                walk(binding_context_size, *term.ref_term_);
+            } else if (term.IsDeref()) {
+                walk(binding_context_size, *term.deref_term_);
+            } else if (term.IsAssignment()) {
+                walk(binding_context_size, *term.assignment_lhs_);
+                walk(binding_context_size, *term.assignment_rhs_);
             }
         };
 
@@ -1358,6 +1365,8 @@ class Term {
             return std::move(Term::Ref().Combine(ref_term_->Clone()));
         } else if (IsDeref()) {
             return std::move(Term::Deref().Combine(deref_term_->Clone()));
+        } else if (IsStoreLocation()) {
+            return std::move(Term::StoreLocation(store_location_));
         }
 
         std::ostringstream error_ss;
@@ -1461,8 +1470,8 @@ std::ostream &operator<<(std::ostream &out, const Term &term) {
         out << "{l " << term.lambda_arg_name_ << " : " << *term.lambda_arg_type_
             << ". " << *term.lambda_body_ << "}";
     } else if (term.IsApplication()) {
-        out << "(" << *term.application_lhs_ << " <- " << *term.application_rhs_
-            << ")";
+        out << "(" << *term.application_lhs_ << ") <- ("
+            << *term.application_rhs_ << ")";
     } else if (term.IsIf()) {
         out << "if (" << *term.if_condition_ << ") then (" << *term.if_then_
             << ") else (" << *term.if_else_ << ")";
@@ -2552,6 +2561,19 @@ class Interpreter {
             std::swap(term, stored_value);
         } else if (term.IsDeref()) {
             Eval1(term.DerefTerm());
+        } else if (term.IsAssignment() &&
+                   term.AssignmentLHS().IsStoreLocation() &&
+                   IsValue(term.AssignmentRHS())) {
+            Type &rhs_type = type_checker_.TypeOf(term.AssignmentRHS());
+            StoreValue(term.AssignmentRHS(), rhs_type,
+                       term.AssignmentLHS().StoreLocationValue());
+            Term unit = Term::Unit();
+            std::swap(term, unit);
+        } else if (term.IsAssignment() &&
+                   term.AssignmentLHS().IsStoreLocation()) {
+            Eval1(term.AssignmentRHS());
+        } else if (term.IsAssignment()) {
+            Eval1(term.AssignmentLHS());
         } else {
             throw std::invalid_argument("No applicable rule.");
         }
@@ -2584,19 +2606,27 @@ class Interpreter {
 
     int StoreValue(const Term &term, const Type &type) {
         int location = first_free_store_location_;
+        store_.resize(store_.size() + type.StorageSize());
+        StoreValue(term, type, location);
+        first_free_store_location_ = location + type.StorageSize();
+        store_location_to_type_[location] = &type;
 
+        return location;
+    }
+
+    int StoreValue(const Term &term, const Type &type, int location) {
         if (term.IsFalse()) {
-            store_.push_back(0);
+            store_[location] = 0;
         } else if (term.IsTrue()) {
-            store_.push_back(1);
+            store_[location] = 1;
         } else if (term.IsUnit()) {
-            store_.push_back(2);
+            store_[location] = 2;
         } else if (IsNatValue(term)) {
             int convereted_term = ConvertNatValueToDecimal(term);
 
             for (int i = 0; i < type.StorageSize(); ++i) {
-                store_.push_back(
-                    static_cast<unsigned char>(convereted_term & 0xFF));
+                store_[location + i] =
+                    static_cast<unsigned char>(convereted_term & 0xFF);
                 convereted_term >>= 8;
             }
 
@@ -2605,16 +2635,16 @@ class Interpreter {
             stored_lambdas_.emplace_back(std::make_unique<Term>(term.Clone()));
 
             for (int i = 0; i < type.StorageSize(); ++i) {
-                store_.push_back(
-                    static_cast<unsigned char>(stored_lambda_index & 0xFF));
+                store_[location + i] =
+                    static_cast<unsigned char>(stored_lambda_index & 0xFF);
                 stored_lambda_index >>= 8;
             }
         } else if (IsRecordValue(term)) {
+            const auto &record_fields = type.GetRecordFields();
             // Reserve 1 byte to properly handle records whose first element is
             // also a record (TODO verify with a test case and document
             // properly).
-            ++first_free_store_location_;
-            const auto &record_fields = type.GetRecordFields();
+            int field_location = location + 1;
 
             for (int i = 0; i < term.RecordTerms().size(); ++i) {
                 std::string element_label = term.RecordLabels()[i];
@@ -2623,7 +2653,9 @@ class Interpreter {
                 store_location_to_record_lables_[location].emplace_back(
                     element_label);
 
-                StoreValue(*element_term, record_fields.at(element_label));
+                StoreValue(*element_term, record_fields.at(element_label),
+                           field_location);
+                field_location += record_fields.at(element_label).StorageSize();
             }
         } else {
             std::ostringstream ss;
@@ -2631,8 +2663,6 @@ class Interpreter {
             throw std::invalid_argument(ss.str());
         }
 
-        first_free_store_location_ = location + type.StorageSize();
-        store_location_to_type_[location] = &type;
         return location;
     }
 
