@@ -19,6 +19,10 @@ t ::=
     {l_i=t_i} for i in 1..n
     t.l
     let x = t in t
+    ref t
+    !t
+    t := t
+    l
 ```
 
 ### Values
@@ -31,6 +35,7 @@ v ::=
     false
     {l_i=v_i} for i in 1..n
     nv
+    l
     
 nv ::=
     0
@@ -45,6 +50,7 @@ T ::=
     Nat
     {l_i:T_i} for i in 1..n
     T -> T
+    Ref T
 ```
 
 ### Contexts
