@@ -1620,6 +1620,19 @@ void InitData() {
         TestData{"!ref l x:Nat. !ref l y:Bool. y",
                  Type::Function(Type::Nat(),
                                 Type::Function(Type::Bool(), Type::Bool()))});
+
+    kData.emplace_back(
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := {a=succ 0, b=false}))",
+                 Type::Nat()});
+
+    // Order of fields in record doesn't matter.
+    kData.emplace_back(
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := {b=false, a=succ 0}))",
+                 Type::Nat()});
+
+    kData.emplace_back(
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := {a=succ 0, c=false}))",
+                 Type::IllTyped()});
 }
 
 struct SubtypingTestData {
@@ -2053,6 +2066,25 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "!((l x:Nat. ref l y:Unit. x) succ succ 0) unit", {"2", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"(!ref {x=succ 0, y=unit}).x", {"1", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"(!ref {x=succ 0, y=unit}).y", {"unit", Type::Unit()}});
+
+    kData.emplace_back(TestData{"(!ref {y=unit, x={a=succ 0, b=false}}).x.b",
+                                {"false", Type::Bool()}});
+
+    kData.emplace_back(
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := "
+                 "{a=succ 0, b=false}))",
+                 {"1", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := "
+                 "{b=false, a=succ 0}))",
+                 {"1", Type::Nat()}});
 }
 
 void Run() {

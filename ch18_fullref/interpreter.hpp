@@ -117,45 +117,46 @@ class Lexer {
             return token;
         }
 
-        std::unordered_map<std::string, Token::Category> token_str_to_cat = {
-            {kLambdaInputSymbol, Token::Category::LAMBDA},
+        static std::unordered_map<std::string, Token::Category>
+            token_str_to_cat = {
+                {kLambdaInputSymbol, Token::Category::LAMBDA},
 
-            {".", Token::Category::DOT},
-            {",", Token::Category::COMMA},
-            {"=", Token::Category::EQUAL},
-            {"(", Token::Category::OPEN_PAREN},
-            {")", Token::Category::CLOSE_PAREN},
-            {"{", Token::Category::OPEN_BRACE},
-            {"}", Token::Category::CLOSE_BRACE},
-            {":", Token::Category::COLON},
-            {"->", Token::Category::ARROW},
-            {":=", Token::Category::ASSIGN},
-            {"!", Token::Category::EXCLAMATION},
+                {".", Token::Category::DOT},
+                {",", Token::Category::COMMA},
+                {"=", Token::Category::EQUAL},
+                {"(", Token::Category::OPEN_PAREN},
+                {")", Token::Category::CLOSE_PAREN},
+                {"{", Token::Category::OPEN_BRACE},
+                {"}", Token::Category::CLOSE_BRACE},
+                {":", Token::Category::COLON},
+                {"->", Token::Category::ARROW},
+                {":=", Token::Category::ASSIGN},
+                {"!", Token::Category::EXCLAMATION},
 
-            {"true", Token::Category::CONSTANT_TRUE},
-            {"false", Token::Category::CONSTANT_FALSE},
+                {"true", Token::Category::CONSTANT_TRUE},
+                {"false", Token::Category::CONSTANT_FALSE},
 
-            {kKeywordBool, Token::Category::KEYWORD_BOOL},
-            {"if", Token::Category::KEYWORD_IF},
-            {"then", Token::Category::KEYWORD_THEN},
-            {"else", Token::Category::KEYWORD_ELSE},
+                {kKeywordBool, Token::Category::KEYWORD_BOOL},
+                {"if", Token::Category::KEYWORD_IF},
+                {"then", Token::Category::KEYWORD_THEN},
+                {"else", Token::Category::KEYWORD_ELSE},
 
-            {"0", Token::Category::CONSTANT_ZERO},
+                {"0", Token::Category::CONSTANT_ZERO},
 
-            {kKeywordNat, Token::Category::KEYWORD_NAT},
-            {"succ", Token::Category::KEYWORD_SUCC},
-            {"pred", Token::Category::KEYWORD_PRED},
-            {"iszero", Token::Category::KEYWORD_ISZERO},
+                {kKeywordNat, Token::Category::KEYWORD_NAT},
+                {"succ", Token::Category::KEYWORD_SUCC},
+                {"pred", Token::Category::KEYWORD_PRED},
+                {"iszero", Token::Category::KEYWORD_ISZERO},
 
-            {kKeywordLet, Token::Category::KEYWORD_LET},
-            {kKeywordIn, Token::Category::KEYWORD_IN},
+                {kKeywordLet, Token::Category::KEYWORD_LET},
+                {kKeywordIn, Token::Category::KEYWORD_IN},
 
-            {kKeywordRef, Token::Category::KEYWORD_REF},
-            {kKeywordRefType, Token::Category::KEYWORD_REF_TYPE},
+                {kKeywordRef, Token::Category::KEYWORD_REF},
+                {kKeywordRefType, Token::Category::KEYWORD_REF_TYPE},
 
-            {kKeywordUnit, Token::Category::CONSTANT_UNIT},
-            {kKeywordUnitType, Token::Category::KEYWORD_UNIT_TYPE},
-        };
+                {kKeywordUnit, Token::Category::CONSTANT_UNIT},
+                {kKeywordUnitType, Token::Category::KEYWORD_UNIT_TYPE},
+            };
 
         auto token_string = token_strings_[current_token_];
 
@@ -230,7 +231,7 @@ class Lexer {
 };
 
 std::ostream &operator<<(std::ostream &out, Token token) {
-    std::unordered_map<Token::Category, std::string> token_to_str = {
+    static std::unordered_map<Token::Category, std::string> token_to_str = {
         {Token::Category::LAMBDA, "λ"},
 
         {Token::Category::DOT, "."},
@@ -2645,6 +2646,7 @@ class Interpreter {
             // also a record (TODO verify with a test case and document
             // properly).
             int field_location = location + 1;
+            store_location_to_record_lables_[location].clear();
 
             for (int i = 0; i < term.RecordTerms().size(); ++i) {
                 std::string element_label = term.RecordLabels()[i];
