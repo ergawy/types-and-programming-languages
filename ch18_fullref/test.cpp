@@ -59,12 +59,13 @@ using namespace utils::test;
 
 std::vector<TestData> kData = {
     // Valid tokens (non-variables):
-    TestData{"l.():->{}=:=",
+    TestData{"l.():->{}=:=!;",
              {Token{Category::LAMBDA}, Token{Category::DOT},
               Token{Category::OPEN_PAREN}, Token{Category::CLOSE_PAREN},
               Token{Category::COLON}, Token{Category::ARROW},
               Token{Category::OPEN_BRACE}, Token{Category::CLOSE_BRACE},
-              Token{Category::EQUAL}, Token{Category::ASSIGN}}},
+              Token{Category::EQUAL}, Token{Category::ASSIGN},
+              Token{Category::EXCLAMATION}, Token{Category::SEMICOLON}}},
 
     // Valid tokens (keywords):
     TestData{"true false if else then 0 succ pred iszero Bool Nat let in ref "
@@ -263,6 +264,13 @@ Term Assignment(Term &&lhs, Term &&rhs) {
 }
 
 std::unique_ptr<Term> UnitUP() { return std::make_unique<Term>(Term::Unit()); }
+
+Term Sequence(Term &&lhs, Term &&rhs) {
+    Term term = Term::Sequence(std::make_unique<Term>(std::move(lhs)));
+    term.Combine(std::move(rhs));
+
+    return term;
+}
 }  // namespace
 
 namespace parser {
@@ -1278,6 +1286,33 @@ void InitData() {
         TestData{"!ref l x:Nat. x",
                  Deref(Ref(Lambda("x", Type::Nat(), Term::Variable("x", 0))))});
 
+    kData.emplace_back(
+        TestData{"let x = ref 0 in (x := succ (!x))",
+                 Let("x", Ref(Term::Zero()),
+                     (Assignment(Term::Variable("x", 0),
+                                 Succ(Deref(Term::Variable("x", 0))))))});
+
+    kData.emplace_back(
+        TestData{"(x := succ (!x)); !x",
+                 Sequence(Assignment(Term::Variable("x", 23),
+                                     Succ(Deref(Term::Variable("x", 23)))),
+                          Deref(Term::Variable("x", 23)))});
+
+    kData.emplace_back(TestData{
+        "(x := succ (!x)); (x := succ (!x)); !x",
+        Sequence(Assignment(Term::Variable("x", 23),
+                            Succ(Deref(Term::Variable("x", 23)))),
+                 Sequence(Assignment(Term::Variable("x", 23),
+                                     Succ(Deref(Term::Variable("x", 23)))),
+                          Deref(Term::Variable("x", 23))))});
+
+    kData.emplace_back(
+        TestData{"let x = ref 0 in (x := succ (!x)); !x",
+                 Let("x", Ref(Term::Zero()),
+                     Sequence(Assignment(Term::Variable("x", 0),
+                                         Succ(Deref(Term::Variable("x", 0)))),
+                              Deref(Term::Variable("x", 0))))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1318,6 +1353,9 @@ void InitData() {
     kData.emplace_back(TestData{"l x:Ref. x"});
     kData.emplace_back(TestData{"l x:Ref Ref. x"});
     kData.emplace_back(TestData{"l x: (Ref Bool ->) Nat. 0"});
+    kData.emplace_back(TestData{"(x := succ (!x));"});
+    kData.emplace_back(TestData{";(x := succ (!x))"});
+    kData.emplace_back(TestData{";"});
 }
 
 void Run() {
@@ -1622,17 +1660,29 @@ void InitData() {
                                 Type::Function(Type::Bool(), Type::Bool()))});
 
     kData.emplace_back(
-        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := {a=succ 0, b=false}))",
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := "
+                 "{a=succ 0, b=false}))",
                  Type::Nat()});
 
     // Order of fields in record doesn't matter.
     kData.emplace_back(
-        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := {b=false, a=succ 0}))",
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := "
+                 "{b=false, a=succ 0}))",
                  Type::Nat()});
 
     kData.emplace_back(
-        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := {a=succ 0, c=false}))",
+        TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := "
+                 "{a=succ 0, c=false}))",
                  Type::IllTyped()});
+
+    kData.emplace_back(TestData{"(x := succ (!x)); !x", Type::IllTyped()});
+
+    kData.emplace_back(
+        TestData{"let x = ref 0 in (x := succ (!x)); !x", Type::Nat()});
+
+    kData.emplace_back(
+        TestData{"let x = ref 0 in (x := succ (!x)); (x := succ (!x)); !x",
+                 Type::Nat()});
 }
 
 struct SubtypingTestData {
@@ -2085,6 +2135,14 @@ void InitData() {
         TestData{"let x = ref {a=0, b=false} in ((l y:Unit. ((!x).a)) (x := "
                  "{b=false, a=succ 0}))",
                  {"1", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"let x = ref 0 in ((x := succ (!x)); (x := pred (!x)); !x)",
+                 {"0", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"let x = ref 0 in ((x := succ (!x)); (x := succ (!x)); !x)",
+                 {"2", Type::Nat()}});
 }
 
 void Run() {

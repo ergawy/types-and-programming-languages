@@ -31,6 +31,7 @@ struct Token {
         COLON,
         ARROW,
         EXCLAMATION,
+        SEMICOLON,
 
         CONSTANT_TRUE,
         CONSTANT_FALSE,
@@ -132,6 +133,7 @@ class Lexer {
                 {"->", Token::Category::ARROW},
                 {":=", Token::Category::ASSIGN},
                 {"!", Token::Category::EXCLAMATION},
+                {";", Token::Category::SEMICOLON},
 
                 {"true", Token::Category::CONSTANT_TRUE},
                 {"false", Token::Category::CONSTANT_FALSE},
@@ -185,7 +187,7 @@ class Lexer {
         while (in.get(c)) {
             // Check for one-character separators and surround them with spaces.
             if (c == ',' || c == '.' || c == '=' || c == '(' || c == ')' ||
-                c == '{' || c == '}' || c == '!') {
+                c == '{' || c == '}' || c == '!' || c == ';') {
                 processed_stream << " " << c << " ";
             } else if (c == '-') {
                 // Check for the two-character serparator '->' and surround it
@@ -244,6 +246,8 @@ std::ostream &operator<<(std::ostream &out, Token token) {
         {Token::Category::COLON, ":"},
         {Token::Category::ARROW, "->"},
         {Token::Category::ASSIGN, ":="},
+        {Token::Category::EXCLAMATION, "!"},
+        {Token::Category::SEMICOLON, ";"},
 
         {Token::Category::CONSTANT_TRUE, "<true>"},
         {Token::Category::CONSTANT_FALSE, "<false>"},
@@ -707,6 +711,14 @@ class Term {
         return result;
     }
 
+    static Term Sequence(std::unique_ptr<Term> lhs) {
+        Term result;
+        result.sequence_lhs_ = std::move(lhs);
+        result.category_ = Category::SEQUENCE;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term &) = delete;
@@ -757,6 +769,8 @@ class Term {
         return category_ == Category::STORE_LOCATION;
     }
 
+    bool IsSequence() const { return category_ == Category::SEQUENCE; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -790,6 +804,8 @@ class Term {
             return !deref_term_;
         } else if (IsAssignment()) {
             return !assignment_lhs_ || !assignment_rhs_;
+        } else if (IsSequence()) {
+            return !sequence_lhs_ || !sequence_rhs_;
         }
 
         return true;
@@ -942,6 +958,18 @@ class Term {
                 *this = Application(std::make_unique<Term>(std::move(*this)),
                                     std::make_unique<Term>(std::move(term)));
             }
+        } else if (IsSequence()) {
+            if (!sequence_lhs_) {
+                throw std::logic_error("Combining with an empty sequence.");
+            } else if (!sequence_rhs_) {
+                sequence_rhs_ = std::make_unique<Term>(std::move(term));
+            } else {
+                // If the sequence term was completely parsed, then combining
+                // this term and the argument term means applying this lambda to
+                // the argument.
+                *this = Application(std::make_unique<Term>(std::move(*this)),
+                                    std::make_unique<Term>(std::move(term)));
+            }
         } else {
             *this = std::move(term);
         }
@@ -955,6 +983,10 @@ class Term {
 
     void ConvertToAssignment() {
         *this = Assignment(std::make_unique<Term>(std::move(*this)));
+    }
+
+    void ConvertToSequence() {
+        *this = Sequence(std::make_unique<Term>(std::move(*this)));
     }
 
     void AddRecordLabel(std::string label) {
@@ -1045,6 +1077,9 @@ class Term {
             } else if (term.IsAssignment()) {
                 walk(binding_context_size, *term.assignment_lhs_);
                 walk(binding_context_size, *term.assignment_rhs_);
+            } else if (term.IsSequence()) {
+                walk(binding_context_size, *term.sequence_lhs_);
+                walk(binding_context_size, *term.sequence_rhs_);
             }
         };
 
@@ -1165,6 +1200,10 @@ class Term {
 
     Term &AssignmentRHS() const { return *assignment_rhs_; }
 
+    Term &SequenceLHS() const { return *sequence_lhs_; }
+
+    Term &SequenceRHS() const { return *sequence_rhs_; }
+
     int StoreLocationValue() const { return store_location_; }
 
     bool operator==(const Term &other) const {
@@ -1244,6 +1283,11 @@ class Term {
             return true;
         }
 
+        if (IsSequence() && other.IsSequence()) {
+            return *sequence_lhs_ == *other.sequence_lhs_ &&
+                   *sequence_rhs_ == *other.sequence_rhs_;
+        }
+
         return false;
     }
 
@@ -1313,7 +1357,7 @@ class Term {
             out << ref_term_->ASTString(indentation + 2);
         } else if (IsDeref()) {
             out << prefix << "!\n";
-            out << ref_term_->ASTString(indentation + 2);
+            out << deref_term_->ASTString(indentation + 2);
         } else if (IsAssignment()) {
             out << prefix << ":=\n";
             out << assignment_lhs_->ASTString(indentation + 2) << "\n";
@@ -1322,6 +1366,10 @@ class Term {
             out << prefix << "unit";
         } else if (IsStoreLocation()) {
             out << prefix << "l[" << store_location_ << "]";
+        } else if (IsSequence()) {
+            out << prefix << ";\n";
+            out << sequence_lhs_->ASTString(indentation + 2) << "\n";
+            out << sequence_rhs_->ASTString(indentation + 2);
         }
 
         return out.str();
@@ -1419,6 +1467,7 @@ class Term {
         DEREF,
         ASSIGNMENT,
         UNIT,
+        SEQUENCE,
 
         STORE_LOCATION,
     };
@@ -1460,6 +1509,9 @@ class Term {
     std::unique_ptr<Term> assignment_rhs_{};
 
     int store_location_;
+
+    std::unique_ptr<Term> sequence_lhs_{};
+    std::unique_ptr<Term> sequence_rhs_{};
 };
 
 std::ostream &operator<<(std::ostream &out, const Term &term) {
@@ -1516,6 +1568,9 @@ std::ostream &operator<<(std::ostream &out, const Term &term) {
         out << "unit";
     } else if (term.IsStoreLocation()) {
         out << "l[" << term.store_location_ << "]";
+    } else if (term.IsSequence()) {
+        out << "(" << *term.sequence_lhs_ << "); (" << *term.sequence_rhs_
+            << ")";
     } else {
         out << "<ERROR>";
     }
@@ -1912,6 +1967,18 @@ class Parser {
 
                     break;
                 }
+                case Token::Category::SEMICOLON: {
+                    if (term_stack.empty() || term_stack.back().IsInvalid()) {
+                        throw std::invalid_argument("Unexpected ';'");
+                    }
+
+                    term_stack.back().ConvertToSequence();
+
+                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    term_stack.emplace_back(Term());
+
+                    break;
+                }
 
                 default: {
                     std::ostringstream error_ss;
@@ -2134,15 +2201,6 @@ namespace type_checker {
 using parser::Term;
 using parser::Type;
 
-// Notes: Store typing is a mapping from store location to the type of values
-// that can be stored at that location. This enables us to avoid re-calculating
-// the type of a location every time a location is encountered in a term which
-// solves (for example) the problem of cyclic references. An example of cyclic
-// references:
-//
-// let r1 = (l x:Nat. 0) in
-// let r2 = (l x:Nat. !r1 x) in
-// (r1 := (l x:Nat. !r2 x); r2)
 class TypeChecker {
     using Context = std::deque<std::pair<std::string, Type *>>;
 
@@ -2405,6 +2463,13 @@ class TypeChecker {
             if (lhs_type.IsRef() && lhs_type.RefType() == rhs_type) {
                 res = &Type::Unit();
             }
+        } else if (term.IsSequence()) {
+            Type &lhs_type = TypeOf(ctx, term.SequenceLHS());
+            Type &rhs_type = TypeOf(ctx, term.SequenceRHS());
+
+            if (lhs_type.IsUnit()) {
+                res = &rhs_type;
+            }
         }
 
         return *res;
@@ -2575,6 +2640,10 @@ class Interpreter {
             Eval1(term.AssignmentRHS());
         } else if (term.IsAssignment()) {
             Eval1(term.AssignmentLHS());
+        } else if (term.IsSequence() && term.SequenceLHS().IsUnit()) {
+            std::swap(term, term.SequenceRHS());
+        } else if (term.IsSequence()) {
+            Eval1(term.SequenceLHS());
         } else {
             throw std::invalid_argument("No applicable rule.");
         }
