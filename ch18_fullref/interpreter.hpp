@@ -2485,6 +2485,217 @@ class TypeChecker {
 };
 }  // namespace type_checker
 
+namespace {
+using Term = parser::Term;
+
+bool IsNatValue(const Term &term) {
+    return term.IsConstantZero() ||
+           (term.IsSucc() && IsNatValue(term.UnaryOpArg()));
+}
+
+bool IsValue(const Term &term);
+
+bool IsRecordValue(const Term &term) {
+    if (!term.IsRecord()) {
+        return false;
+    }
+
+    for (auto &record_term : term.RecordTerms()) {
+        if (!IsValue(*record_term)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool IsValue(const Term &term) {
+    return term.IsLambda() || term.IsTrue() || term.IsFalse() ||
+           IsNatValue(term) || IsRecordValue(term) || term.IsUnit() ||
+           term.IsStoreLocation();
+}
+
+int ConvertNatValueToDecimal(const Term &nat_val) {
+    if (!IsNatValue(nat_val)) {
+        throw std::logic_error("Trying to convert a non-Nat value to decimal.");
+    }
+
+    std::ostringstream ss;
+    ss << nat_val;
+
+    auto term_str = ss.str();
+
+    std::size_t start_pos = 0;
+    int num = 0;
+
+    while ((start_pos = term_str.find("succ", start_pos)) !=
+           std::string::npos) {
+        ++num;
+        ++start_pos;
+    }
+
+    return num;
+}
+
+Term ConvertDecimalToNatValue(int dec_val) {
+    std::ostringstream res;
+
+    for (int i = 0; i < dec_val; ++i) {
+        res << "succ ";
+    }
+
+    res << "0";
+
+    parser::Parser p(std::move(std::istringstream(res.str())));
+
+    return p.ParseProgram();
+}
+}  // namespace
+
+namespace runtime {
+class Store {
+    using Term = parser::Term;
+    using Type = type_checker::Type;
+
+   public:
+    int StoreValue(const Term &term, const Type &type) {
+        int location = first_free_store_location_;
+        store_.resize(store_.size() + type.StorageSize());
+        StoreValue(term, type, location);
+        first_free_store_location_ = location + type.StorageSize();
+        store_location_to_type_[location] = &type;
+
+        return location;
+    }
+
+    int StoreValue(const Term &term, const Type &type, int location) {
+        if (term.IsFalse()) {
+            store_[location] = 0;
+        } else if (term.IsTrue()) {
+            store_[location] = 1;
+        } else if (term.IsUnit()) {
+            store_[location] = 2;
+        } else if (IsNatValue(term)) {
+            int convereted_term = ConvertNatValueToDecimal(term);
+
+            for (int i = 0; i < type.StorageSize(); ++i) {
+                store_[location + i] =
+                    static_cast<unsigned char>(convereted_term & 0xFF);
+                convereted_term >>= 8;
+            }
+
+        } else if (term.IsLambda()) {
+            int stored_lambda_index = stored_lambdas_.size();
+            stored_lambdas_.emplace_back(std::make_unique<Term>(term.Clone()));
+
+            for (int i = 0; i < type.StorageSize(); ++i) {
+                store_[location + i] =
+                    static_cast<unsigned char>(stored_lambda_index & 0xFF);
+                stored_lambda_index >>= 8;
+            }
+        } else if (IsRecordValue(term)) {
+            const auto &record_fields = type.GetRecordFields();
+            // Reserve 1 byte to properly handle records whose first element is
+            // also a record (TODO verify with a test case and document
+            // properly).
+            int field_location = location + 1;
+            store_location_to_record_lables_[location].clear();
+
+            for (int i = 0; i < term.RecordTerms().size(); ++i) {
+                std::string element_label = term.RecordLabels()[i];
+                Term *element_term = &*term.RecordTerms()[i];
+
+                store_location_to_record_lables_[location].emplace_back(
+                    element_label);
+
+                StoreValue(*element_term, record_fields.at(element_label),
+                           field_location);
+                field_location += record_fields.at(element_label).StorageSize();
+            }
+        } else {
+            std::ostringstream ss;
+            ss << "Trying to store a non-value term: " << term;
+            throw std::invalid_argument(ss.str());
+        }
+
+        return location;
+    }
+
+    Term RetrieveValue(int store_location, const Type &type) {
+        if (type.IsBool()) {
+            if (store_.at(store_location) == 0) {
+                return Term::False();
+            } else if (store_[store_location] == 1) {
+                return Term::True();
+            }
+        } else if (type.IsUnit()) {
+            if (store_.at(store_location) == 2) {
+                return Term::Unit();
+            }
+        } else if (type.IsNat()) {
+            int stored_value_in_decimal = 0;
+
+            for (int i = 0; i < type.StorageSize(); ++i) {
+                stored_value_in_decimal |=
+                    (store_.at(store_location + i) << (i * 8));
+            }
+
+            return ConvertDecimalToNatValue(stored_value_in_decimal);
+        } else if (type.IsFunction()) {
+            unsigned long stored_lambda_index = 0;
+
+            for (int i = 0; i < type.StorageSize(); ++i) {
+                stored_lambda_index |=
+                    (store_.at(store_location + i) << (i * 8));
+            }
+
+            Term *res = reinterpret_cast<Term *>(
+                stored_lambdas_[stored_lambda_index].get());
+
+            return res->Clone();
+        } else if (type.IsRecord()) {
+            Term res = Term::Record();
+            const auto &record_type_fields = type.GetRecordFields();
+            int field_location_start = store_location + 1;
+
+            for (std::string label :
+                 store_location_to_record_lables_[store_location]) {
+                res.AddRecordLabel(label);
+                res.Combine(RetrieveValue(field_location_start,
+                                          record_type_fields.at(label)));
+
+                field_location_start +=
+                    record_type_fields.at(label).StorageSize();
+            }
+
+            return res;
+        }
+
+        std::ostringstream ss;
+        ss << "Unexpected store value: " << store_[store_location]
+           << " at location: " << store_location;
+        throw std::logic_error(ss.str());
+    }
+
+    const Type& GetStoredValueType(int value_location) const {
+        return *store_location_to_type_.at(value_location);
+    }
+
+   private:
+    // Provides a store for referenced values. The store is little endian, a
+    // multi-byte value store with its least significant byte first and its most
+    // significant byte last.
+    std::vector<unsigned char> store_;
+    int first_free_store_location_ = 0;
+    std::unordered_map<int, const Type *> store_location_to_type_;
+
+    std::unordered_map<int, std::vector<std::string>>
+        store_location_to_record_lables_;
+
+    std::vector<std::unique_ptr<Term>> stored_lambdas_;
+};
+}  // namespace runtime
+
 namespace interpreter {
 using namespace type_checker;
 
@@ -2615,15 +2826,15 @@ class Interpreter {
             // Allocate a new store location for the value.
             Type &referenced_term_type = type_checker_.TypeOf(term.RefTerm());
             int store_location =
-                StoreValue(term.RefTerm(), referenced_term_type);
+                store_.StoreValue(term.RefTerm(), referenced_term_type);
             Term new_term = Term::StoreLocation(store_location);
             std::swap(term, new_term);
         } else if (term.IsRef()) {
             Eval1(term.RefTerm());
         } else if (term.IsDeref() && term.DerefTerm().IsStoreLocation()) {
             int store_location = term.DerefTerm().StoreLocationValue();
-            Term stored_value = RetrieveValue(
-                store_location, *store_location_to_type_.at(store_location));
+            Term stored_value = store_.RetrieveValue(
+                store_location, store_.GetStoredValueType(store_location));
             std::swap(term, stored_value);
         } else if (term.IsDeref()) {
             Eval1(term.DerefTerm());
@@ -2631,7 +2842,7 @@ class Interpreter {
                    term.AssignmentLHS().IsStoreLocation() &&
                    IsValue(term.AssignmentRHS())) {
             Type &rhs_type = type_checker_.TypeOf(term.AssignmentRHS());
-            StoreValue(term.AssignmentRHS(), rhs_type,
+            store_.StoreValue(term.AssignmentRHS(), rhs_type,
                        term.AssignmentLHS().StoreLocationValue());
             Term unit = Term::Unit();
             std::swap(term, unit);
@@ -2649,200 +2860,8 @@ class Interpreter {
         }
     }
 
-    bool IsNatValue(const Term &term) {
-        return term.IsConstantZero() ||
-               (term.IsSucc() && IsNatValue(term.UnaryOpArg()));
-    }
-
-    bool IsRecordValue(const Term &term) {
-        if (!term.IsRecord()) {
-            return false;
-        }
-
-        for (auto &record_term : term.RecordTerms()) {
-            if (!IsValue(*record_term)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    bool IsValue(const Term &term) {
-        return term.IsLambda() || term.IsTrue() || term.IsFalse() ||
-               IsNatValue(term) || IsRecordValue(term) || term.IsUnit() ||
-               term.IsStoreLocation();
-    }
-
-    int StoreValue(const Term &term, const Type &type) {
-        int location = first_free_store_location_;
-        store_.resize(store_.size() + type.StorageSize());
-        StoreValue(term, type, location);
-        first_free_store_location_ = location + type.StorageSize();
-        store_location_to_type_[location] = &type;
-
-        return location;
-    }
-
-    int StoreValue(const Term &term, const Type &type, int location) {
-        if (term.IsFalse()) {
-            store_[location] = 0;
-        } else if (term.IsTrue()) {
-            store_[location] = 1;
-        } else if (term.IsUnit()) {
-            store_[location] = 2;
-        } else if (IsNatValue(term)) {
-            int convereted_term = ConvertNatValueToDecimal(term);
-
-            for (int i = 0; i < type.StorageSize(); ++i) {
-                store_[location + i] =
-                    static_cast<unsigned char>(convereted_term & 0xFF);
-                convereted_term >>= 8;
-            }
-
-        } else if (term.IsLambda()) {
-            int stored_lambda_index = stored_lambdas_.size();
-            stored_lambdas_.emplace_back(std::make_unique<Term>(term.Clone()));
-
-            for (int i = 0; i < type.StorageSize(); ++i) {
-                store_[location + i] =
-                    static_cast<unsigned char>(stored_lambda_index & 0xFF);
-                stored_lambda_index >>= 8;
-            }
-        } else if (IsRecordValue(term)) {
-            const auto &record_fields = type.GetRecordFields();
-            // Reserve 1 byte to properly handle records whose first element is
-            // also a record (TODO verify with a test case and document
-            // properly).
-            int field_location = location + 1;
-            store_location_to_record_lables_[location].clear();
-
-            for (int i = 0; i < term.RecordTerms().size(); ++i) {
-                std::string element_label = term.RecordLabels()[i];
-                Term *element_term = &*term.RecordTerms()[i];
-
-                store_location_to_record_lables_[location].emplace_back(
-                    element_label);
-
-                StoreValue(*element_term, record_fields.at(element_label),
-                           field_location);
-                field_location += record_fields.at(element_label).StorageSize();
-            }
-        } else {
-            std::ostringstream ss;
-            ss << "Trying to store a non-value term: " << term;
-            throw std::invalid_argument(ss.str());
-        }
-
-        return location;
-    }
-
-    Term RetrieveValue(int store_location, const Type &type) {
-        if (type.IsBool()) {
-            if (store_.at(store_location) == 0) {
-                return Term::False();
-            } else if (store_[store_location] == 1) {
-                return Term::True();
-            }
-        } else if (type.IsUnit()) {
-            if (store_.at(store_location) == 2) {
-                return Term::Unit();
-            }
-        } else if (type.IsNat()) {
-            int stored_value_in_decimal = 0;
-
-            for (int i = 0; i < type.StorageSize(); ++i) {
-                stored_value_in_decimal |=
-                    (store_.at(store_location + i) << (i * 8));
-            }
-
-            return ConvertDecimalToNatValue(stored_value_in_decimal);
-        } else if (type.IsFunction()) {
-            unsigned long stored_lambda_index = 0;
-
-            for (int i = 0; i < type.StorageSize(); ++i) {
-                stored_lambda_index |=
-                    (store_.at(store_location + i) << (i * 8));
-            }
-
-            Term *res = reinterpret_cast<Term *>(
-                stored_lambdas_[stored_lambda_index].get());
-
-            return res->Clone();
-        } else if (type.IsRecord()) {
-            Term res = Term::Record();
-            const auto &record_type_fields = type.GetRecordFields();
-            int field_location_start = store_location + 1;
-
-            for (std::string label :
-                 store_location_to_record_lables_[store_location]) {
-                res.AddRecordLabel(label);
-                res.Combine(RetrieveValue(field_location_start,
-                                          record_type_fields.at(label)));
-
-                field_location_start +=
-                    record_type_fields.at(label).StorageSize();
-            }
-
-            return res;
-        }
-
-        std::ostringstream ss;
-        ss << "Unexpected store value: " << store_[store_location]
-           << " at location: " << store_location;
-        throw std::logic_error(ss.str());
-    }
-
-    int ConvertNatValueToDecimal(const Term &nat_val) {
-        if (!IsNatValue(nat_val)) {
-            throw std::logic_error(
-                "Trying to convert a non-Nat value to decimal.");
-        }
-
-        std::ostringstream ss;
-        ss << nat_val;
-
-        auto term_str = ss.str();
-
-        std::size_t start_pos = 0;
-        int num = 0;
-
-        while ((start_pos = term_str.find("succ", start_pos)) !=
-               std::string::npos) {
-            ++num;
-            ++start_pos;
-        }
-
-        return num;
-    }
-
-    Term ConvertDecimalToNatValue(int dec_val) {
-        std::ostringstream res;
-
-        for (int i = 0; i < dec_val; ++i) {
-            res << "succ ";
-        }
-
-        res << "0";
-
-        parser::Parser p(std::move(std::istringstream(res.str())));
-
-        return p.ParseProgram();
-    }
-
    private:
     TypeChecker type_checker_;
-
-    // Provides a store for referenced values. The store is little endian, a
-    // multi-byte value store with its least significant byte first and its most
-    // significant byte last.
-    std::vector<unsigned char> store_;
-    int first_free_store_location_ = 0;
-    std::unordered_map<int, const Type *> store_location_to_type_;
-
-    std::unordered_map<int, std::vector<std::string>>
-        store_location_to_record_lables_;
-
-    std::vector<std::unique_ptr<Term>> stored_lambdas_;
+    runtime::Store store_;
 };
 }  // namespace interpreter
