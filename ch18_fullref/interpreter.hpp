@@ -573,6 +573,31 @@ class Term {
     friend std::ostream &operator<<(std::ostream &, const Term &);
 
    public:
+    enum class Category {
+        EMPTY,
+        LAMBDA,
+        VARIABLE,
+        APPLICATION,
+        IF,
+        TRUE,
+        FALSE,
+        SUCC,
+        PRED,
+        ISZERO,
+        ZERO,
+        RECORD,
+        PROJECTION,
+        LET,
+        REF,
+        DEREF,
+        ASSIGNMENT,
+        UNIT,
+        SEQUENCE,
+        PARENTHESIZED,
+
+        STORE_LOCATION,
+    };
+
     static Term Lambda(std::string arg_name, Type &arg_type) {
         Term result;
         result.lambda_arg_name_ = arg_name;
@@ -719,6 +744,13 @@ class Term {
         return result;
     }
 
+    static Term ParenthesizedTerm() {
+        Term result;
+        result.category_ = Category::PARENTHESIZED;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term &) = delete;
@@ -771,6 +803,10 @@ class Term {
 
     bool IsSequence() const { return category_ == Category::SEQUENCE; }
 
+    bool IsParenthesized() const {
+        return category_ == Category::PARENTHESIZED;
+    }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -806,12 +842,16 @@ class Term {
             return !assignment_lhs_ || !assignment_rhs_;
         } else if (IsSequence()) {
             return !sequence_lhs_ || !sequence_rhs_;
+        } else if (IsParenthesized()) {
+            return !parenthesized_term_;
         }
 
         return true;
     }
 
     bool IsEmpty() const { return category_ == Category::EMPTY; }
+
+    enum Category Category() const { return category_; }
 
     Term &Combine(Term &&term) {
         if (term.IsInvalid()) {
@@ -820,32 +860,17 @@ class Term {
         }
 
         if (IsLambda()) {
-            if (lambda_body_) {
-                // If the lambda body was completely parsed, then combining this
-                // term and the argument term means applying this lambda to the
-                // argument.
-                if (is_complete_) {
-                    *this =
-                        Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
-
-                    lambda_body_ = nullptr;
-                    lambda_arg_name_ = "";
-                    is_complete_ = false;
-                } else {
-                    lambda_body_->Combine(std::move(term));
-                }
-            } else {
+            if (!lambda_body_) {
                 lambda_body_ = std::make_unique<Term>(std::move(term));
+            } else {
+                ConvertToApplication(std::move(term));
             }
         } else if (IsVariable()) {
-            *this = Application(std::make_unique<Term>(std::move(*this)),
-                                std::make_unique<Term>(std::move(term)));
+            ConvertToApplication(std::move(term));
 
             variable_name_ = "";
         } else if (IsApplication()) {
-            *this = Application(std::make_unique<Term>(std::move(*this)),
-                                std::make_unique<Term>(std::move(term)));
+            ConvertToApplication(std::move(term));
         } else if (IsIf()) {
             if (!if_condition_) {
                 if_condition_ = std::make_unique<Term>(std::move(term));
@@ -855,16 +880,7 @@ class Term {
                 if (!if_else_) {
                     if_else_ = std::make_unique<Term>(std::move(term));
                 } else {
-                    // If the if condition was completely parsed, then combining
-                    // this term and the argument term means applying this
-                    // lambda to the argument.
-                    *this =
-                        Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
-
-                    if_condition_ = nullptr;
-                    if_then_ = nullptr;
-                    if_else_ = nullptr;
+                    ConvertToApplication(std::move(term));
                 }
             }
         } else if (IsSucc()) {
@@ -904,10 +920,7 @@ class Term {
 
             record_terms_.push_back(std::make_unique<Term>(std::move(term)));
         } else if (IsProjection()) {
-            *this = Application(std::make_unique<Term>(std::move(*this)),
-                                std::make_unique<Term>(std::move(term)));
-
-            projection_label_ = "";
+            ConvertToApplication(std::move(term));
         } else if (IsLet()) {
             if (!let_bound_term_) {
                 let_bound_term_ = std::make_unique<Term>(std::move(term));
@@ -915,36 +928,20 @@ class Term {
                 if (!let_body_term_) {
                     let_body_term_ = std::make_unique<Term>(std::move(term));
                 } else {
-                    // If the let binding term was completely parsed, then
-                    // combining this term and the argument term means applying
-                    // this lambda to the argument.
-                    *this =
-                        Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
-
-                    let_bound_term_ = nullptr;
-                    let_body_term_ = nullptr;
+                    ConvertToApplication(std::move(term));
                 }
             }
         } else if (IsRef()) {
             if (!ref_term_) {
                 ref_term_ = std::make_unique<Term>(std::move(term));
             } else {
-                // If the ref term was completely parsed, then combining
-                // this term and the argument term means applying this
-                // lambda to the argument.
-                *this = Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
+                ConvertToApplication(std::move(term));
             }
         } else if (IsDeref()) {
             if (!deref_term_) {
                 deref_term_ = std::make_unique<Term>(std::move(term));
             } else {
-                // If the de-ref term was completely parsed, then combining
-                // this term and the argument term means applying this
-                // lambda to the argument.
-                *this = Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
+                ConvertToApplication(std::move(term));
             }
         } else if (IsAssignment()) {
             if (!assignment_lhs_) {
@@ -952,11 +949,7 @@ class Term {
             } else if (!assignment_rhs_) {
                 assignment_rhs_ = std::make_unique<Term>(std::move(term));
             } else {
-                // If the assignment term was completely parsed, then combining
-                // this term and the argument term means applying this
-                // lambda to the argument.
-                *this = Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
+                ConvertToApplication(std::move(term));
             }
         } else if (IsSequence()) {
             if (!sequence_lhs_) {
@@ -964,11 +957,13 @@ class Term {
             } else if (!sequence_rhs_) {
                 sequence_rhs_ = std::make_unique<Term>(std::move(term));
             } else {
-                // If the sequence term was completely parsed, then combining
-                // this term and the argument term means applying this lambda to
-                // the argument.
-                *this = Application(std::make_unique<Term>(std::move(*this)),
-                                    std::make_unique<Term>(std::move(term)));
+                ConvertToApplication(std::move(term));
+            }
+        } else if (IsParenthesized()) {
+            if (!parenthesized_term_) {
+                parenthesized_term_ = std::make_unique<Term>(std::move(term));
+            } else {
+                ConvertToApplication(std::move(term));
             }
         } else {
             *this = std::move(term);
@@ -995,6 +990,34 @@ class Term {
         }
 
         record_labels_.push_back(label);
+    }
+
+    void ConvertToApplication(Term &&term) {
+        if (term.IsApplication()) {
+            *this = Application(
+                std::make_unique<Term>(Application(
+                    std::make_unique<Term>(std::move(*this)),
+                    std::make_unique<Term>(std::move(*term.application_lhs_)))),
+                std::make_unique<Term>(std::move(*term.application_rhs_)));
+
+            // If we have yet another nested application in this application's
+            // lhs with wrong associativity, then fix it.
+            //
+            // NOTE: this is quite complicated and might not be general enough.
+            //
+            // TODO: try to find a test to break this.
+            if (application_lhs_->IsApplication() &&
+                application_lhs_->application_rhs_->IsApplication()) {
+                application_lhs_->application_lhs_->ConvertToApplication(
+                    std::move(*application_lhs_->application_rhs_));
+
+                application_lhs_ =
+                    std::move(application_lhs_->application_lhs_);
+            }
+        } else {
+            *this = Application(std::make_unique<Term>(std::move(*this)),
+                                std::make_unique<Term>(std::move(term)));
+        }
     }
 
     /*
@@ -1080,6 +1103,8 @@ class Term {
             } else if (term.IsSequence()) {
                 walk(binding_context_size, *term.sequence_lhs_);
                 walk(binding_context_size, *term.sequence_rhs_);
+            } else if (term.IsParenthesized()) {
+                walk(binding_context_size, *term.parenthesized_term_);
             }
         };
 
@@ -1168,7 +1193,7 @@ class Term {
 
     Term &UnaryOpArg() const {
         if (!IsSucc() && !IsPred() && !IsIsZero()) {
-            throw std::invalid_argument("yyyInvalid term.");
+            throw std::invalid_argument("Invalid term.");
         }
 
         return *unary_op_arg_;
@@ -1205,6 +1230,8 @@ class Term {
     Term &SequenceRHS() const { return *sequence_rhs_; }
 
     int StoreLocationValue() const { return store_location_; }
+
+    Term &GetParenthesizedTerm() const { return *parenthesized_term_; }
 
     bool operator==(const Term &other) const {
         if (IsLambda() && other.IsLambda()) {
@@ -1286,6 +1313,10 @@ class Term {
         if (IsSequence() && other.IsSequence()) {
             return *sequence_lhs_ == *other.sequence_lhs_ &&
                    *sequence_rhs_ == *other.sequence_rhs_;
+        }
+
+        if (IsParenthesized() && other.IsParenthesized()) {
+            return *parenthesized_term_ == *other.parenthesized_term_;
         }
 
         return false;
@@ -1370,6 +1401,10 @@ class Term {
             out << prefix << ";\n";
             out << sequence_lhs_->ASTString(indentation + 2) << "\n";
             out << sequence_rhs_->ASTString(indentation + 2);
+        } else if (IsParenthesized()) {
+            out << prefix << "(\n";
+            out << parenthesized_term_->ASTString(indentation + 2) << "\n";
+            out << prefix << ")";
         }
 
         return out.str();
@@ -1416,6 +1451,9 @@ class Term {
             return std::move(Term::Deref().Combine(deref_term_->Clone()));
         } else if (IsStoreLocation()) {
             return std::move(Term::StoreLocation(store_location_));
+        } else if (IsParenthesized()) {
+            return std::move(Term::ParenthesizedTerm().Combine(
+                parenthesized_term_->Clone()));
         }
 
         std::ostringstream error_ss;
@@ -1448,31 +1486,7 @@ class Term {
     bool is_complete_ = false;
 
    private:
-    enum class Category {
-        EMPTY,
-        LAMBDA,
-        VARIABLE,
-        APPLICATION,
-        IF,
-        TRUE,
-        FALSE,
-        SUCC,
-        PRED,
-        ISZERO,
-        ZERO,
-        RECORD,
-        PROJECTION,
-        LET,
-        REF,
-        DEREF,
-        ASSIGNMENT,
-        UNIT,
-        SEQUENCE,
-
-        STORE_LOCATION,
-    };
-
-    Category category_ = Category::EMPTY;
+    enum Category category_ = Category::EMPTY;
 
     std::string lambda_arg_name_ = "";
     Type *lambda_arg_type_ = nullptr;
@@ -1512,6 +1526,8 @@ class Term {
 
     std::unique_ptr<Term> sequence_lhs_{};
     std::unique_ptr<Term> sequence_rhs_{};
+
+    std::unique_ptr<Term> parenthesized_term_{};
 };
 
 std::ostream &operator<<(std::ostream &out, const Term &term) {
@@ -1523,21 +1539,20 @@ std::ostream &operator<<(std::ostream &out, const Term &term) {
         out << "{l " << term.lambda_arg_name_ << " : " << *term.lambda_arg_type_
             << ". " << *term.lambda_body_ << "}";
     } else if (term.IsApplication()) {
-        out << "(" << *term.application_lhs_ << ") <- ("
-            << *term.application_rhs_ << ")";
+        out << *term.application_lhs_ << " <- " << *term.application_rhs_;
     } else if (term.IsIf()) {
-        out << "if (" << *term.if_condition_ << ") then (" << *term.if_then_
-            << ") else (" << *term.if_else_ << ")";
+        out << "if " << *term.if_condition_ << " then " << *term.if_then_
+            << " else " << *term.if_else_;
     } else if (term.IsTrue()) {
         out << "true";
     } else if (term.IsFalse()) {
         out << "false";
     } else if (term.IsSucc()) {
-        out << "succ (" << *term.unary_op_arg_ << ")";
+        out << "succ " << *term.unary_op_arg_;
     } else if (term.IsPred()) {
-        out << "pred (" << *term.unary_op_arg_ << ")";
+        out << "pred " << *term.unary_op_arg_;
     } else if (term.IsIsZero()) {
-        out << "iszero (" << *term.unary_op_arg_ << ")";
+        out << "iszero " << *term.unary_op_arg_;
     } else if (term.IsConstantZero()) {
         out << "0";
     } else if (term.IsRecord()) {
@@ -1555,22 +1570,22 @@ std::ostream &operator<<(std::ostream &out, const Term &term) {
     } else if (term.IsProjection()) {
         out << *term.projection_term_ << "." << term.projection_label_;
     } else if (term.IsLet()) {
-        out << "let (" << term.let_binding_name_ << ") = ("
-            << *term.let_bound_term_ << ") in (" << *term.let_body_term_ << ")";
+        out << "let " << term.let_binding_name_ << " = "
+            << *term.let_bound_term_ << " in " << *term.let_body_term_;
     } else if (term.IsRef()) {
         out << "ref " << *term.ref_term_;
     } else if (term.IsDeref()) {
         out << "!" << *term.deref_term_;
     } else if (term.IsAssignment()) {
-        out << "(" << *term.assignment_lhs_ << ") := (" << *term.assignment_rhs_
-            << ")";
+        out << *term.assignment_lhs_ << " := " << *term.assignment_rhs_;
     } else if (term.IsUnit()) {
         out << "unit";
     } else if (term.IsStoreLocation()) {
         out << "l[" << term.store_location_ << "]";
     } else if (term.IsSequence()) {
-        out << "(" << *term.sequence_lhs_ << "); (" << *term.sequence_rhs_
-            << ")";
+        out << "" << *term.sequence_lhs_ << "; " << *term.sequence_rhs_;
+    } else if (term.IsParenthesized()) {
+        out << "(" << *term.parenthesized_term_ << ")";
     } else {
         out << "<ERROR>";
     }
@@ -1584,16 +1599,13 @@ class Parser {
    public:
     Parser(std::istringstream &&in) : lexer_(std::move(in)) {}
 
+    using TermStack = std::vector<Term>;
+
     Term ParseProgram() {
         Token next_token;
-        std::vector<Term> term_stack;
+        TermStack term_stack;
         term_stack.emplace_back(Term());
         int balance_parens = 0;
-        // For each '(', records the size of term_stack when the '(' was parsed.
-        // This is used later when the corresponding ')' is parsed to know how
-        // many Terms from term_stack should be popped (i.e. their parsing is
-        // know to be complete).
-        std::vector<int> stack_size_on_open_paren;
         // Contains a list of bound variables in order of binding. For example,
         // for a term λ x. λ y. x y, this list would eventually contains {"x" ,
         // "y"} in that order. This is used to assign de Bruijn indices/static
@@ -1619,6 +1631,9 @@ class Parser {
                         term_stack.emplace_back(
                             Term::Lambda(lambda_arg_name, lambda_arg.second));
                     }
+
+                    // Start a new empty term to build the lambda body.
+                    term_stack.emplace_back(Term());
 
                     break;
                 }
@@ -1701,7 +1716,6 @@ class Parser {
                         term_stack.emplace_back(Term::If());
                     }
 
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
 
@@ -1709,8 +1723,8 @@ class Parser {
                 }
 
                 case Token::Category::KEYWORD_THEN: {
-                    UnwindStack(term_stack, stack_size_on_open_paren,
-                                bound_variables);
+                    UnwindStack(term_stack, bound_variables,
+                                Term::Category::IF);
 
                     --balance_parens;
 
@@ -1718,7 +1732,6 @@ class Parser {
                         throw std::invalid_argument("Unexpected 'then'");
                     }
 
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
 
@@ -1726,8 +1739,8 @@ class Parser {
                 }
 
                 case Token::Category::KEYWORD_ELSE: {
-                    UnwindStack(term_stack, stack_size_on_open_paren,
-                                bound_variables);
+                    UnwindStack(term_stack, bound_variables,
+                                Term::Category::IF);
 
                     --balance_parens;
 
@@ -1781,7 +1794,12 @@ class Parser {
                 }
 
                 case Token::Category::OPEN_PAREN: {
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::ParenthesizedTerm();
+                    } else {
+                        term_stack.emplace_back(Term::ParenthesizedTerm());
+                    }
+
                     term_stack.emplace_back(Term());
                     ++balance_parens;
 
@@ -1789,8 +1807,8 @@ class Parser {
                 }
 
                 case Token::Category::CLOSE_PAREN: {
-                    UnwindStack(term_stack, stack_size_on_open_paren,
-                                bound_variables);
+                    UnwindStack(term_stack, bound_variables,
+                                Term::Category::PARENTHESIZED);
 
                     --balance_parens;
 
@@ -1835,7 +1853,6 @@ class Parser {
                         throw std::invalid_argument("Unexpected =");
                     }
 
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
 
@@ -1844,8 +1861,8 @@ class Parser {
 
                 case Token::Category::COMMA:
                 case Token::Category::CLOSE_BRACE: {
-                    UnwindStack(term_stack, stack_size_on_open_paren,
-                                bound_variables);
+                    UnwindStack(term_stack, bound_variables,
+                                Term::Category::RECORD);
 
                     --balance_parens;
 
@@ -1901,7 +1918,6 @@ class Parser {
                             "Expected '=' for let-binding.");
                     }
 
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
                     ++balance_parens;
 
@@ -1909,14 +1925,17 @@ class Parser {
                 }
 
                 case Token::Category::KEYWORD_IN: {
-                    UnwindStack(term_stack, stack_size_on_open_paren,
-                                bound_variables);
+                    UnwindStack(term_stack, bound_variables,
+                                Term::Category::LET);
 
                     --balance_parens;
 
                     if (!term_stack.back().IsLet()) {
                         throw std::invalid_argument("Unexpected 'in'");
                     }
+
+                    // Start a new empty term to build the let body.
+                    term_stack.emplace_back(Term());
 
                     break;
                 }
@@ -1955,8 +1974,6 @@ class Parser {
                     }
 
                     term_stack.back().ConvertToAssignment();
-
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
 
                     break;
@@ -1973,8 +1990,6 @@ class Parser {
                     }
 
                     term_stack.back().ConvertToSequence();
-
-                    stack_size_on_open_paren.emplace_back(term_stack.size());
                     term_stack.emplace_back(Term());
 
                     break;
@@ -2004,16 +2019,11 @@ class Parser {
         return std::move(term_stack.back());
     }
 
-    void UnwindStack(std::vector<Term> &term_stack,
-                     std::vector<int> &stack_size_on_open_paren,
-                     std::vector<std::string> &bound_variables) {
-        while (!term_stack.empty() && !stack_size_on_open_paren.empty() &&
-               term_stack.size() > stack_size_on_open_paren.back()) {
-            if (term_stack.back().IsLambda() &&
-                !term_stack.back().is_complete_) {
-                // Mark the λ as complete so that terms to its right
-                // won't be combined to its body.
-                term_stack.back().MarkAsComplete();
+    void UnwindStack(TermStack &term_stack,
+                     std::vector<std::string> &bound_variables,
+                     enum Term::Category target_cat) {
+        do {
+            if (term_stack.back().IsLambda()) {
                 // λ's variable is no longer part of the current binding
                 // context, therefore pop it.
                 bound_variables.pop_back();
@@ -2026,11 +2036,8 @@ class Parser {
             }
 
             CombineStackTop(term_stack);
-        }
-
-        if (!stack_size_on_open_paren.empty()) {
-            stack_size_on_open_paren.pop_back();
-        }
+        } while (term_stack.size() > 1 &&
+                 term_stack.back().Category() != target_cat);
     }
 
     void CombineStackTop(std::vector<Term> &term_stack) {
@@ -2470,6 +2477,8 @@ class TypeChecker {
             if (lhs_type.IsUnit()) {
                 res = &rhs_type;
             }
+        } else if (term.IsParenthesized()) {
+            res = &TypeOf(ctx, term.GetParenthesizedTerm());
         }
 
         return *res;
@@ -2677,7 +2686,7 @@ class Store {
         throw std::logic_error(ss.str());
     }
 
-    const Type& GetStoredValueType(int value_location) const {
+    const Type &GetStoredValueType(int value_location) const {
         return *store_location_to_type_.at(value_location);
     }
 
@@ -2843,7 +2852,7 @@ class Interpreter {
                    IsValue(term.AssignmentRHS())) {
             Type &rhs_type = type_checker_.TypeOf(term.AssignmentRHS());
             store_.StoreValue(term.AssignmentRHS(), rhs_type,
-                       term.AssignmentLHS().StoreLocationValue());
+                              term.AssignmentLHS().StoreLocationValue());
             Term unit = Term::Unit();
             std::swap(term, unit);
         } else if (term.IsAssignment() &&
@@ -2855,6 +2864,8 @@ class Interpreter {
             std::swap(term, term.SequenceRHS());
         } else if (term.IsSequence()) {
             Eval1(term.SequenceLHS());
+        } else if (term.IsParenthesized()) {
+            std::swap(term, term.GetParenthesizedTerm());
         } else {
             throw std::invalid_argument("No applicable rule.");
         }

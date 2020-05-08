@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <iostream>
+#include <memory>
 #include <optional>
 
 #include "interpreter.hpp"
@@ -271,6 +272,20 @@ Term Sequence(Term &&lhs, Term &&rhs) {
 
     return term;
 }
+
+Term ParenthesizedTerm(Term &&term) {
+    Term res = Term::ParenthesizedTerm();
+    res.Combine(std::move(term));
+
+    return res;
+}
+
+std::unique_ptr<Term> ParenthesizedTermUP(Term &&term) {
+    Term res = Term::ParenthesizedTerm();
+    res.Combine(std::move(term));
+
+    return std::make_unique<Term>(std::move(res));
+}
 }  // namespace
 
 namespace parser {
@@ -294,12 +309,13 @@ void InitData() {
     kData.emplace_back(TestData{
         "x y", Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
 
-    kData.emplace_back(TestData{
-        "(x y)", Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
-
     kData.emplace_back(
-        TestData{"((x y))",
-                 Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
+        TestData{"(x y)", ParenthesizedTerm(Term::Application(
+                              VariableUP("x", 23), VariableUP("y", 24)))});
+
+    kData.emplace_back(TestData{
+        "((x y))", ParenthesizedTerm(ParenthesizedTerm(Term::Application(
+                       VariableUP("x", 23), VariableUP("y", 24))))});
 
     kData.emplace_back(TestData{
         "x y x", Term::Application(
@@ -307,69 +323,86 @@ void InitData() {
                      VariableUP("x", 23))});
 
     kData.emplace_back(TestData{
-        "(x y) x", Term::Application(
-                       ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
-                       VariableUP("x", 23))});
+        "(x y) x",
+        Term::Application(ParenthesizedTermUP(Term::Application(
+                              VariableUP("x", 23), VariableUP("y", 24))),
+                          VariableUP("x", 23))});
 
     kData.emplace_back(TestData{
-        "((x y) x)", Term::Application(ApplicationUP(VariableUP("x", 23),
-                                                     VariableUP("y", 24)),
-                                       VariableUP("x", 23))});
+        "((x y) x)", ParenthesizedTerm(Term::Application(
+                         ParenthesizedTermUP(Term::Application(
+                             VariableUP("x", 23), VariableUP("y", 24))),
+                         VariableUP("x", 23)))});
+
+    kData.emplace_back(TestData{"((z))", ParenthesizedTerm(ParenthesizedTerm(
+                                             Term::Variable("z", 25)))});
+
+    kData.emplace_back(
+        TestData{"((x y)) (z)",
+                 Term::Application(
+                     ParenthesizedTermUP(ParenthesizedTerm(Term::Application(
+                         VariableUP("x", 23), VariableUP("y", 24)))),
+                     ParenthesizedTermUP(Term::Variable("z", 25)))});
+
+    kData.emplace_back(
+        TestData{"((x y)) z",
+                 Term::Application(
+                     ParenthesizedTermUP(ParenthesizedTerm(Term::Application(
+                         VariableUP("x", 23), VariableUP("y", 24)))),
+                     VariableUP("z", 25))});
 
     kData.emplace_back(TestData{
-        "((x y)) (z)", Term::Application(ApplicationUP(VariableUP("x", 23),
-                                                       VariableUP("y", 24)),
-                                         VariableUP("z", 25))});
-
-    kData.emplace_back(TestData{
-        "((x y)) z", Term::Application(ApplicationUP(VariableUP("x", 23),
-                                                     VariableUP("y", 24)),
-                                       VariableUP("z", 25))});
-
-    kData.emplace_back(TestData{
-        "((x y) z)", Term::Application(ApplicationUP(VariableUP("x", 23),
-                                                     VariableUP("y", 24)),
-                                       VariableUP("z", 25))});
+        "((x y) z)", ParenthesizedTerm(Term::Application(
+                         ParenthesizedTermUP(Term::Application(
+                             VariableUP("x", 23), VariableUP("y", 24))),
+                         VariableUP("z", 25)))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x a)",
-        Lambda("x", Type::Bool(),
-               Term::Application(VariableUP("x", 0), VariableUP("a", 1)))});
+        ParenthesizedTerm(Lambda(
+            "x", Type::Bool(),
+            Term::Application(VariableUP("x", 0), VariableUP("a", 1))))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x y l y:Bool. y l z:Bool. z)",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   LambdaUP(
-                       "y", Type::Bool(),
-                       Term::Application(VariableUP("y", 0),
-                                         LambdaUP("z", Type::Bool(),
-                                                  Term::Variable("z", 0))))))});
+        ParenthesizedTerm(Lambda(
+            "x", Type::Bool(),
+            Term::Application(
+                ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                LambdaUP(
+                    "y", Type::Bool(),
+                    Term::Application(VariableUP("y", 0),
+                                      LambdaUP("z", Type::Bool(),
+                                               Term::Variable("z", 0)))))))});
 
-    kData.emplace_back(
-        TestData{"(l x:Bool. x) (l y:Bool. y)",
-                 Term::Application(
-                     LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
-                     LambdaUP("y", Type::Bool(), Term::Variable("y", 0)))});
+    kData.emplace_back(TestData{
+        "(l x:Bool. x) (l y:Bool. y)",
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
+                          ParenthesizedTermUP(Lambda(
+                              "y", Type::Bool(), Term::Variable("y", 0))))});
 
     kData.emplace_back(
         TestData{"(l x:Bool. x) l y:Bool. y",
                  Term::Application(
-                     LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+                     ParenthesizedTermUP(
+                         Lambda("x", Type::Bool(), Term::Variable("x", 0))),
                      LambdaUP("y", Type::Bool(), Term::Variable("y", 0)))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) (l y:Bool. y) l z:Bool. z",
         Term::Application(
-            ApplicationUP(LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
-                          LambdaUP("y", Type::Bool(), Term::Variable("y", 0))),
+            ApplicationUP(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
+                          ParenthesizedTermUP(Lambda("y", Type::Bool(),
+                                                     Term::Variable("y", 0)))),
             LambdaUP("z", Type::Bool(), Term::Variable("z", 0)))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) l y:Bool. y l z:Bool. z",
         Term::Application(
-            LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+            ParenthesizedTermUP(
+                Lambda("x", Type::Bool(), Term::Variable("x", 0))),
             LambdaUP("y", Type::Bool(),
                      Term::Application(VariableUP("y", 0),
                                        LambdaUP("z", Type::Bool(),
@@ -377,191 +410,217 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) l y:Bool. y a",
-        Term::Application(LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
                           LambdaUP("y", Type::Bool(),
                                    Term::Application(VariableUP("y", 0),
                                                      VariableUP("a", 1))))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) l y:Bool. y x",
-        Term::Application(LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
                           LambdaUP("y", Type::Bool(),
                                    Term::Application(VariableUP("y", 0),
                                                      VariableUP("x", 24))))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) l y:Bool. y z",
-        Term::Application(LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
                           LambdaUP("y", Type::Bool(),
                                    Term::Application(VariableUP("y", 0),
                                                      VariableUP("x", 26))))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) x",
-        Term::Application(LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
                           VariableUP("x", 23))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) y",
-        Term::Application(LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Bool(),
+                                                     Term::Variable("x", 0))),
                           VariableUP("y", 24))});
 
     kData.emplace_back(
         TestData{"(x l y:Bool. y)",
-                 Term::Application(
+                 ParenthesizedTerm(Term::Application(
                      VariableUP("x", 23),
-                     LambdaUP("y", Type::Bool(), Term::Variable("y", 0)))});
+                     LambdaUP("y", Type::Bool(), Term::Variable("y", 0))))});
+
+    kData.emplace_back(
+        TestData{"(x y)", ParenthesizedTerm(Term::Application(
+                              VariableUP("x", 23), VariableUP("y", 24)))});
 
     kData.emplace_back(TestData{
-        "(x y)", Term::Application(VariableUP("x", 23), VariableUP("y", 24))});
+        "(x y) x",
+        Term::Application(ParenthesizedTermUP(Term::Application(
+                              VariableUP("x", 23), VariableUP("y", 24))),
+                          VariableUP("x", 23))});
 
     kData.emplace_back(TestData{
-        "(x y) x", Term::Application(
-                       ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
-                       VariableUP("x", 23))});
+        "(x y) z",
+        Term::Application(ParenthesizedTermUP(Term::Application(
+                              VariableUP("x", 23), VariableUP("y", 24))),
+                          VariableUP("z", 25))});
 
-    kData.emplace_back(TestData{
-        "(x y) z", Term::Application(
-                       ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
-                       VariableUP("z", 25))});
+    kData.emplace_back(
+        TestData{"(x)", ParenthesizedTerm(Term::Variable("x", 23))});
 
-    kData.emplace_back(TestData{"(x)", Term::Variable("x", 23)});
-
-    kData.emplace_back(TestData{
-        "l x :Bool. (l y:Bool.((x y) x))",
-        Lambda("x", Type::Bool(),
-               Lambda("y", Type::Bool(),
-                      Term::Application(
-                          ApplicationUP(VariableUP("x", 1), VariableUP("y", 0)),
-                          VariableUP("x", 1))))});
+    kData.emplace_back(
+        TestData{"l x :Bool. (l y:Bool.((x y) x))",
+                 Lambda("x", Type::Bool(),
+                        ParenthesizedTerm(Lambda(
+                            "y", Type::Bool(),
+                            ParenthesizedTerm(Term::Application(
+                                ParenthesizedTermUP(Term::Application(
+                                    VariableUP("x", 1), VariableUP("y", 0))),
+                                VariableUP("x", 1))))))});
 
     kData.emplace_back(
         TestData{"l x:Bool. (l y:Bool. (y x))",
                  Lambda("x", Type::Bool(),
-                        Lambda("y", Type::Bool(),
-                               Term::Application(VariableUP("y", 0),
-                                                 VariableUP("x", 1))))});
+                        ParenthesizedTerm(Lambda(
+                            "y", Type::Bool(),
+                            ParenthesizedTerm(Term::Application(
+                                VariableUP("y", 0), VariableUP("x", 1))))))});
+
+    kData.emplace_back(
+        TestData{"l x:Bool. (x y)",
+                 Lambda("x", Type::Bool(),
+                        ParenthesizedTerm(Term::Application(
+                            VariableUP("x", 0), VariableUP("y", 25))))});
 
     kData.emplace_back(TestData{
-        "l x:Bool. (x y)",
-        Lambda("x", Type::Bool(),
-               Term::Application(VariableUP("x", 0), VariableUP("y", 25)))});
-
-    kData.emplace_back(TestData{
-        "l x:Bool. (x)", Lambda("x", Type::Bool(), Term::Variable("x", 0))});
+        "l x:Bool. (x)",
+        Lambda("x", Type::Bool(), ParenthesizedTerm(Term::Variable("x", 0)))});
 
     kData.emplace_back(TestData{
         "l x:Bool. ((x y) (l z:Bool. z))",
         Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   LambdaUP("z", Type::Bool(), Term::Variable("z", 0))))});
+               ParenthesizedTerm(Term::Application(
+                   ParenthesizedTermUP(Term::Application(VariableUP("x", 0),
+                                                         VariableUP("y", 25))),
+                   ParenthesizedTermUP(
+                       Lambda("z", Type::Bool(), Term::Variable("z", 0))))))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool. ((x y) (z))",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+    kData.emplace_back(
+        TestData{"l x:Bool. ((x y) (z))",
+                 Lambda("x", Type::Bool(),
+                        ParenthesizedTerm(Term::Application(
+                            ParenthesizedTermUP(Term::Application(
+                                VariableUP("x", 0), VariableUP("y", 25))),
+                            ParenthesizedTermUP(Term::Variable("z", 26)))))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool. ((x y) z)",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+    kData.emplace_back(
+        TestData{"l x:Bool. ((x y) z)",
+                 Lambda("x", Type::Bool(),
+                        ParenthesizedTerm(Term::Application(
+                            ParenthesizedTermUP(Term::Application(
+                                VariableUP("x", 0), VariableUP("y", 25))),
+                            VariableUP("z", 26))))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool. (x (y z))",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   VariableUP("x", 0),
-                   ApplicationUP(VariableUP("y", 25), VariableUP("z", 26))))});
+    kData.emplace_back(
+        TestData{"l x:Bool. (x (y z))",
+                 Lambda("x", Type::Bool(),
+                        ParenthesizedTerm(Term::Application(
+                            VariableUP("x", 0),
+                            ParenthesizedTermUP(Term::Application(
+                                VariableUP("y", 25), VariableUP("z", 26))))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x) (y) (z)",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+                   ApplicationUP(ParenthesizedTermUP(Term::Variable("x", 0)),
+                                 ParenthesizedTermUP(Term::Variable("y", 25))),
+                   ParenthesizedTermUP(Term::Variable("z", 26))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x l y:Bool. y) z",
-        Lambda(
-            "x", Type::Bool(),
-            Term::Application(ApplicationUP(VariableUP("x", 0),
-                                            LambdaUP("y", Type::Bool(),
-                                                     Term::Variable("y", 0))),
-                              VariableUP("z", 26)))});
+        Lambda("x", Type::Bool(),
+               Term::Application(
+                   ParenthesizedTermUP(Term::Application(
+                       VariableUP("x", 0),
+                       LambdaUP("y", Type::Bool(), Term::Variable("y", 0)))),
+                   VariableUP("z", 26)))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x y l z:Bool. z)",
         Lambda("x", Type::Bool(),
-               Term::Application(
+               ParenthesizedTerm(Term::Application(
                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   LambdaUP("z", Type::Bool(), Term::Variable("z", 0))))});
+                   LambdaUP("z", Type::Bool(), Term::Variable("z", 0)))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x y z)",
         Lambda("x", Type::Bool(),
-               Term::Application(
+               ParenthesizedTerm(Term::Application(
                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+                   VariableUP("z", 26))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x y) (z)",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+        Lambda(
+            "x", Type::Bool(),
+            Term::Application(ParenthesizedTermUP(Term::Application(
+                                  VariableUP("x", 0), VariableUP("y", 25))),
+                              ParenthesizedTermUP(Term::Variable("z", 26))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x y) l z:Bool. z",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                   ParenthesizedTermUP(Term::Application(VariableUP("x", 0),
+                                                         VariableUP("y", 25))),
                    LambdaUP("z", Type::Bool(), Term::Variable("z", 0))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x y) z",
         Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+               Term::Application(ParenthesizedTermUP(Term::Application(
+                                     VariableUP("x", 0), VariableUP("y", 25))),
+                                 VariableUP("z", 26)))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x) l y:Bool. y",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   VariableUP("x", 0),
+                   ParenthesizedTermUP(Term::Variable("x", 0)),
                    LambdaUP("y", Type::Bool(), Term::Variable("y", 0))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x) y",
         Lambda("x", Type::Bool(),
-               Term::Application(VariableUP("x", 0), VariableUP("y", 25)))});
+               Term::Application(ParenthesizedTermUP(Term::Variable("x", 0)),
+                                 VariableUP("y", 25)))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x) y (z)",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+                   ApplicationUP(ParenthesizedTermUP(Term::Variable("x", 0)),
+                                 VariableUP("y", 25)),
+                   ParenthesizedTermUP(Term::Variable("z", 26))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. (x) y z",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                   ApplicationUP(ParenthesizedTermUP(Term::Variable("x", 0)),
+                                 VariableUP("y", 25)),
                    VariableUP("z", 26)))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool. l y:Bool. (x y) x",
-        Lambda("x", Type::Bool(),
-               Lambda("y", Type::Bool(),
-                      Term::Application(
-                          ApplicationUP(VariableUP("x", 1), VariableUP("y", 0)),
-                          VariableUP("x", 1))))});
+    kData.emplace_back(
+        TestData{"l x:Bool. l y:Bool. (x y) x",
+                 Lambda("x", Type::Bool(),
+                        Lambda("y", Type::Bool(),
+                               Term::Application(
+                                   ParenthesizedTermUP(Term::Application(
+                                       VariableUP("x", 1), VariableUP("y", 0))),
+                                   VariableUP("x", 1))))});
 
     kData.emplace_back(
         TestData{"l x:Bool. l y:Bool. x y",
@@ -624,70 +683,76 @@ void InitData() {
                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
                    VariableUP("z", 26)))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool. x (l y:Bool. y)",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   VariableUP("x", 0),
-                   LambdaUP("y", Type::Bool(), Term::Variable("y", 0))))});
+    kData.emplace_back(
+        TestData{"l x:Bool. x (l y:Bool. y)",
+                 Lambda("x", Type::Bool(),
+                        Term::Application(
+                            VariableUP("x", 0),
+                            ParenthesizedTermUP(Lambda(
+                                "y", Type::Bool(), Term::Variable("y", 0)))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (l y:Bool. y) l z:Bool. z",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(
-                       VariableUP("x", 0),
-                       LambdaUP("y", Type::Bool(), Term::Variable("y", 0))),
-                   LambdaUP("z", Type::Bool(), Term::Variable("z", 0))))});
+        Lambda(
+            "x", Type::Bool(),
+            Term::Application(
+                ApplicationUP(VariableUP("x", 0),
+                              ParenthesizedTermUP(Lambda(
+                                  "y", Type::Bool(), Term::Variable("y", 0)))),
+                LambdaUP("z", Type::Bool(), Term::Variable("z", 0))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (l y:Bool. y) l z:Bool. (z w)",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   ApplicationUP(
-                       VariableUP("x", 0),
-                       LambdaUP("y", Type::Bool(), Term::Variable("y", 0))),
-                   LambdaUP("z", Type::Bool(),
-                            Term::Application(VariableUP("z", 0),
-                                              VariableUP("w", 24)))))});
+        Lambda(
+            "x", Type::Bool(),
+            Term::Application(
+                ApplicationUP(VariableUP("x", 0),
+                              ParenthesizedTermUP(Lambda(
+                                  "y", Type::Bool(), Term::Variable("y", 0)))),
+                LambdaUP("z", Type::Bool(),
+                         ParenthesizedTerm(Term::Application(
+                             VariableUP("z", 0), VariableUP("w", 24))))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (l y:Bool. y) z",
-        Lambda(
-            "x", Type::Bool(),
-            Term::Application(ApplicationUP(VariableUP("x", 0),
-                                            LambdaUP("y", Type::Bool(),
-                                                     Term::Variable("y", 0))),
-                              VariableUP("z", 26)))});
+        Lambda("x", Type::Bool(),
+               Term::Application(ApplicationUP(VariableUP("x", 0),
+                                               ParenthesizedTermUP(Lambda(
+                                                   "y", Type::Bool(),
+                                                   Term::Variable("y", 0)))),
+                                 VariableUP("z", 26)))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (y l z:Bool. z)",
         Lambda("x", Type::Bool(),
-               Term::Application(
-                   VariableUP("x", 0),
-                   ApplicationUP(
-                       VariableUP("y", 25),
-                       LambdaUP("z", Type::Bool(), Term::Variable("z", 0)))))});
+               Term::Application(VariableUP("x", 0),
+                                 ParenthesizedTermUP(Term::Application(
+                                     VariableUP("y", 25),
+                                     LambdaUP("z", Type::Bool(),
+                                              Term::Variable("z", 0))))))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool. x (y z)",
-        Lambda("x", Type::Bool(),
-               Term::Application(
-                   VariableUP("x", 0),
-                   ApplicationUP(VariableUP("y", 25), VariableUP("z", 26))))});
+    kData.emplace_back(
+        TestData{"l x:Bool. x (y z)",
+                 Lambda("x", Type::Bool(),
+                        Term::Application(
+                            VariableUP("x", 0),
+                            ParenthesizedTermUP(Term::Application(
+                                VariableUP("y", 25), VariableUP("z", 26)))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (y) (z)",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                   VariableUP("z", 26)))});
+                   ApplicationUP(VariableUP("x", 0),
+                                 ParenthesizedTermUP(Term::Variable("y", 25))),
+                   ParenthesizedTermUP(Term::Variable("z", 26))))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (y) z",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                   ApplicationUP(VariableUP("x", 0),
+                                 ParenthesizedTermUP(Term::Variable("y", 25))),
                    VariableUP("z", 26)))});
 
     kData.emplace_back(TestData{
@@ -810,24 +875,28 @@ void InitData() {
                                             VariableUP("z", 26)),
                               VariableUP("w", 23)))});
 
-    kData.emplace_back(TestData{
-        "l x:Bool.(l y:Bool.((x y) x))",
-        Lambda("x", Type::Bool(),
-               Lambda("y", Type::Bool(),
-                      Term::Application(
-                          ApplicationUP(VariableUP("x", 1), VariableUP("y", 0)),
-                          VariableUP("x", 1))))});
+    kData.emplace_back(
+        TestData{"l x:Bool.(l y:Bool.((x y) x))",
+                 Lambda("x", Type::Bool(),
+                        ParenthesizedTerm(Lambda(
+                            "y", Type::Bool(),
+                            ParenthesizedTerm(Term::Application(
+                                ParenthesizedTermUP(Term::Application(
+                                    VariableUP("x", 1), VariableUP("y", 0))),
+                                VariableUP("x", 1))))))});
 
     kData.emplace_back(TestData{
         "l x:Bool.x", Lambda("x", Type::Bool(), Term::Variable("x", 0))});
 
     kData.emplace_back(TestData{
-        "l y:Bool. (y)", Lambda("x", Type::Bool(), Term::Variable("x", 0))});
+        "l y:Bool. (y)",
+        Lambda("x", Type::Bool(), ParenthesizedTerm(Term::Variable("x", 0)))});
 
     kData.emplace_back(TestData{
         "l y:Bool. (y) x",
         Lambda("x", Type::Bool(),
-               Term::Application(VariableUP("y", 0), VariableUP("x", 24)))});
+               Term::Application(ParenthesizedTermUP(Term::Variable("y", 0)),
+                                 VariableUP("x", 24)))});
 
     kData.emplace_back(TestData{
         "l y:Bool. x l x:Bool. y",
@@ -859,21 +928,24 @@ void InitData() {
 
     kData.emplace_back(TestData{"x", Term::Variable("x", 23)});
 
-    kData.emplace_back(
-        TestData{"x (l y:Bool. y)",
-                 Term::Application(
-                     VariableUP("x", 23),
-                     LambdaUP("y", Type::Bool(), Term::Variable("y", 0)))});
+    kData.emplace_back(TestData{
+        "x (l y:Bool. y)",
+        Term::Application(VariableUP("x", 23),
+                          ParenthesizedTermUP(Lambda(
+                              "y", Type::Bool(), Term::Variable("y", 0))))});
 
     kData.emplace_back(TestData{
-        "x (y z)", Term::Application(VariableUP("x", 23),
-                                     ApplicationUP(VariableUP("y", 24),
-                                                   VariableUP("z", 25)))});
+        "x (y z)",
+        Term::Application(VariableUP("x", 23),
+                          ParenthesizedTermUP(Term::Application(
+                              VariableUP("y", 24), VariableUP("z", 25))))});
 
     kData.emplace_back(TestData{
-        "x (y) z", Term::Application(
-                       ApplicationUP(VariableUP("x", 23), VariableUP("y", 24)),
-                       VariableUP("z", 25))});
+        "x (y) z",
+        Term::Application(
+            ApplicationUP(VariableUP("x", 23),
+                          ParenthesizedTermUP(Term::Variable("y", 24))),
+            VariableUP("z", 25))});
 
     kData.emplace_back(TestData{
         "x l x:Bool. l y:Bool. x y x y",
@@ -902,24 +974,27 @@ void InitData() {
                                         VariableUP("z", 25)),
                           VariableUP("x", 23))});
 
-    kData.emplace_back(TestData{
-        "(l z:Bool. l x:Bool. x) (l  y:Bool. y)",
-        Term::Application(
-            LambdaUP("z", Type::Bool(),
-                     Lambda("x", Type::Bool(), Term::Variable("x", 0))),
-            LambdaUP("y", Type::Bool(), Term::Variable("y", 0)))});
+    kData.emplace_back(
+        TestData{"(l z:Bool. l x:Bool. x) (l  y:Bool. y)",
+                 Term::Application(
+                     ParenthesizedTermUP(Lambda(
+                         "z", Type::Bool(),
+                         Lambda("x", Type::Bool(), Term::Variable("x", 0)))),
+                     ParenthesizedTermUP(
+                         Lambda("y", Type::Bool(), Term::Variable("y", 0))))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x y l y:Bool. y l z:Bool. z) x",
         Term::Application(
-            LambdaUP("x", Type::Bool(),
-                     Term::Application(
-                         ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
-                         LambdaUP("y", Type::Bool(),
-                                  Term::Application(
-                                      VariableUP("y", 0),
-                                      LambdaUP("z", Type::Bool(),
-                                               Term::Variable("z", 0)))))),
+            ParenthesizedTermUP(Lambda(
+                "x", Type::Bool(),
+                Term::Application(
+                    ApplicationUP(VariableUP("x", 0), VariableUP("y", 25)),
+                    LambdaUP(
+                        "y", Type::Bool(),
+                        Term::Application(VariableUP("y", 0),
+                                          LambdaUP("z", Type::Bool(),
+                                                   Term::Variable("z", 0))))))),
             VariableUP("x", 23))});
 
     kData.emplace_back(TestData{
@@ -929,29 +1004,35 @@ void InitData() {
                    ApplicationUP(
                        ApplicationUP(
                            VariableUP("x", 0),
-                           LambdaUP("y", Type::Bool(), Term::Variable("y", 0))),
-                       LambdaUP("z", Type::Bool(), Term::Variable("z", 0))),
+                           ParenthesizedTermUP(Lambda("y", Type::Bool(),
+                                                      Term::Variable("y", 0)))),
+                       ParenthesizedTermUP(
+                           Lambda("z", Type::Bool(), Term::Variable("z", 0)))),
                    VariableUP("w", 23)))});
 
     kData.emplace_back(TestData{
         "l x:Bool. x (x y) l z:Bool. z",
         Lambda("x", Type::Bool(),
                Term::Application(
-                   ApplicationUP(
-                       VariableUP("x", 0),
-                       ApplicationUP(VariableUP("x", 0), VariableUP("y", 25))),
+                   ApplicationUP(VariableUP("x", 0),
+                                 ParenthesizedTermUP(Term::Application(
+                                     VariableUP("x", 0), VariableUP("y", 25)))),
                    LambdaUP("z", Type::Bool(), Term::Variable("z", 0))))});
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) ((l x:Bool. x) (l z:Bool. (l x:Bool. x) z))",
         Term::Application(
-            LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
-            ApplicationUP(
-                LambdaUP("x", Type::Bool(), Term::Variable("x", 0)),
-                LambdaUP("z", Type::Bool(),
-                         Term::Application(LambdaUP("x", Type::Bool(),
-                                                    Term::Variable("x", 0)),
-                                           VariableUP("z", 0)))))});
+            ParenthesizedTermUP(
+                Lambda("x", Type::Bool(), Term::Variable("x", 0))),
+            ParenthesizedTermUP(Term::Application(
+                ParenthesizedTermUP(
+                    Lambda("x", Type::Bool(), Term::Variable("x", 0))),
+                ParenthesizedTermUP(
+                    Lambda("z", Type::Bool(),
+                           Term::Application(
+                               ParenthesizedTermUP(Lambda(
+                                   "x", Type::Bool(), Term::Variable("x", 0))),
+                               VariableUP("z", 0)))))))});
 
     // Some examples from tapl,§5.2
     // true = l t:Bool. l f:Bool. t
@@ -963,17 +1044,17 @@ void InitData() {
         Term::Application(
             ApplicationUP(
                 ApplicationUP(
-                    LambdaUP(
+                    ParenthesizedTermUP(Lambda(
                         "b", Type::Bool(),
                         Lambda("m", Type::Bool(),
                                Lambda("n", Type::Bool(),
                                       Term::Application(
                                           ApplicationUP(VariableUP("b", 2),
                                                         VariableUP("m", 1)),
-                                          VariableUP("n", 0))))),
-                    LambdaUP(
+                                          VariableUP("n", 0)))))),
+                    ParenthesizedTermUP(Lambda(
                         "t", Type::Bool(),
-                        Lambda("f", Type::Bool(), Term::Variable("t", 1)))),
+                        Lambda("f", Type::Bool(), Term::Variable("t", 1))))),
                 VariableUP("v", 21)),
             VariableUP("w", 22))});
 
@@ -1061,29 +1142,30 @@ void InitData() {
     kData.emplace_back(TestData{"if true then true else false",
                                 If(Term::True(), Term::True(), Term::False())});
 
-    kData.emplace_back(
-        TestData{"if (if true then true else false) then (l y:Bool->Bool. y) "
-                 "else (l x:Bool. false)",
-                 If(If(Term::True(), Term::True(), Term::False()),
-                    Lambda("y", Type::Function(Type::Bool(), Type::Bool()),
-                           Term::Variable("y", 0)),
-                    Lambda("x", Type::Bool(), Term::False()))});
+    kData.emplace_back(TestData{
+        "if (if true then true else false) then (l y:Bool->Bool. y) "
+        "else (l x:Bool. false)",
+        If(ParenthesizedTerm(If(Term::True(), Term::True(), Term::False())),
+           ParenthesizedTerm(Lambda("y",
+                                    Type::Function(Type::Bool(), Type::Bool()),
+                                    Term::Variable("y", 0))),
+           ParenthesizedTerm(Lambda("x", Type::Bool(), Term::False())))});
 
-    kData.emplace_back(
-        TestData{"if (l x:Bool. x) then true else false",
-                 If(Lambda("x", Type::Bool(), Term::Variable("x", 0)),
-                    Term::True(), Term::False())});
+    kData.emplace_back(TestData{
+        "if (l x:Bool. x) then true else false",
+        If(ParenthesizedTerm(Lambda("x", Type::Bool(), Term::Variable("x", 0))),
+           Term::True(), Term::False())});
 
     kData.emplace_back(TestData{
         "if (l x:Bool. x) then true else l x:Bool. x",
-        If(Lambda("x", Type::Bool(), Term::Variable("x", 0)), Term::True(),
-           Lambda("x", Type::Bool(), Term::Variable("x", 0)))});
+        If(ParenthesizedTerm(Lambda("x", Type::Bool(), Term::Variable("x", 0))),
+           Term::True(), Lambda("x", Type::Bool(), Term::Variable("x", 0)))});
 
-    kData.emplace_back(
-        TestData{"if (l x:Bool. x) then (l x:Bool .x) else l x:Bool. x",
-                 If(Lambda("x", Type::Bool(), Term::Variable("x", 0)),
-                    Lambda("x", Type::Bool(), Term::Variable("x", 0)),
-                    Lambda("x", Type::Bool(), Term::Variable("x", 0)))});
+    kData.emplace_back(TestData{
+        "if (l x:Bool. x) then (l x:Bool .x) else l x:Bool. x",
+        If(ParenthesizedTerm(Lambda("x", Type::Bool(), Term::Variable("x", 0))),
+           ParenthesizedTerm(Lambda("x", Type::Bool(), Term::Variable("x", 0))),
+           Lambda("x", Type::Bool(), Term::Variable("x", 0)))});
 
     kData.emplace_back(
         TestData{"l x:Bool. if true then true else false",
@@ -1096,7 +1178,8 @@ void InitData() {
                     Term::True(), Term::False())});
 
     kData.emplace_back(TestData{
-        "((l x:Bool. x))", Lambda("x", Type::Bool(), Term::Variable("x", 0))});
+        "((l x:Bool. x))", ParenthesizedTerm(ParenthesizedTerm(Lambda(
+                               "x", Type::Bool(), Term::Variable("x", 0))))});
 
     kData.emplace_back(TestData{
         "if true then l x:Bool. x else false",
@@ -1140,11 +1223,12 @@ void InitData() {
         TestData{"l x:Nat. pred pred x",
                  Lambda("x", Type::Nat(), Pred(Pred(Term::Variable("x", 0))))});
 
-    kData.emplace_back(TestData{
-        "(l x:Nat. pred pred x) succ succ succ 0",
-        Term::Application(
-            LambdaUP("x", Type::Nat(), Pred(Pred(Term::Variable("x", 0)))),
-            std::make_unique<Term>(Succ(Succ(Succ(Term::Zero())))))});
+    kData.emplace_back(
+        TestData{"(l x:Nat. pred pred x) succ succ succ 0",
+                 Term::Application(
+                     ParenthesizedTermUP(Lambda(
+                         "x", Type::Nat(), Pred(Pred(Term::Variable("x", 0))))),
+                     std::make_unique<Term>(Succ(Succ(Succ(Term::Zero())))))});
 
     auto record = Term::Record();
     record.AddRecordLabel("x");
@@ -1181,8 +1265,9 @@ void InitData() {
     record5.Combine(Term::Zero());
     kData.emplace_back(TestData{
         "(l r:{x:Nat}. r.x) {x=succ 0}",
-        Term::Application(LambdaUP("r", Type::Record({{"x", Type::Nat()}}),
-                                   Term::Projection(VariableUP("r", 0), "x")),
+        Term::Application(ParenthesizedTermUP(Lambda(
+                              "r", Type::Record({{"x", Type::Nat()}}),
+                              Term::Projection(VariableUP("r", 0), "x"))),
                           std::make_unique<Term>(std::move(record5)))});
 
     kData.emplace_back(TestData{"let x = true in succ 0",
@@ -1210,9 +1295,10 @@ void InitData() {
     kData.emplace_back(TestData{
         "(l y:Nat. let x = l x:Bool. x in succ 0) a",
         Term::Application(
-            LambdaUP("y", Type::Nat(),
-                     Let("x", Lambda("x", Type::Bool(), Term::Variable("x", 0)),
-                         Succ(Term::Zero()))),
+            ParenthesizedTermUP(Lambda(
+                "y", Type::Nat(),
+                Let("x", Lambda("x", Type::Bool(), Term::Variable("x", 0)),
+                    Succ(Term::Zero())))),
             VariableUP("a", 0))});
 
     kData.emplace_back(TestData{"ref x", Ref(Term::Variable("x", 23))});
@@ -1229,11 +1315,12 @@ void InitData() {
             RefUP(Term::Variable("x", 23)),
             LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))))});
 
-    kData.emplace_back(TestData{
-        "(let y = succ 0 in iszero y) ref x ",
-        Term::Application(
-            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))),
-            RefUP(Term::Variable("x", 23)))});
+    kData.emplace_back(
+        TestData{"(let y = succ 0 in iszero y) ref x ",
+                 Term::Application(
+                     ParenthesizedTermUP(Let("y", Succ(Term::Zero()),
+                                             IsZero(Term::Variable("y", 0)))),
+                     RefUP(Term::Variable("x", 23)))});
 
     kData.emplace_back(TestData{"!x", Deref(Term::Variable("x", 23))});
 
@@ -1249,11 +1336,12 @@ void InitData() {
             DerefUP(Term::Variable("x", 23)),
             LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))))});
 
-    kData.emplace_back(TestData{
-        "(let y = succ 0 in iszero y) !x ",
-        Term::Application(
-            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))),
-            DerefUP(Term::Variable("x", 23)))});
+    kData.emplace_back(
+        TestData{"(let y = succ 0 in iszero y) !x ",
+                 Term::Application(
+                     ParenthesizedTermUP(Let("y", Succ(Term::Zero()),
+                                             IsZero(Term::Variable("y", 0)))),
+                     DerefUP(Term::Variable("x", 23)))});
 
     kData.emplace_back(TestData{"x := y", Assignment(Term::Variable("x", 23),
                                                      Term::Variable("y", 24))});
@@ -1274,7 +1362,8 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "(l x:Unit. x) unit",
-        Term::Application(LambdaUP("x", Type::Unit(), Term::Variable("x", 0)),
+        Term::Application(ParenthesizedTermUP(Lambda("x", Type::Unit(),
+                                                     Term::Variable("x", 0))),
                           UnitUP())});
 
     kData.emplace_back(
@@ -1286,32 +1375,54 @@ void InitData() {
         TestData{"!ref l x:Nat. x",
                  Deref(Ref(Lambda("x", Type::Nat(), Term::Variable("x", 0))))});
 
-    kData.emplace_back(
-        TestData{"let x = ref 0 in (x := succ (!x))",
-                 Let("x", Ref(Term::Zero()),
-                     (Assignment(Term::Variable("x", 0),
-                                 Succ(Deref(Term::Variable("x", 0))))))});
+    kData.emplace_back(TestData{
+        "let x = ref 0 in (x := succ (!x))",
+        Let("x", Ref(Term::Zero()),
+            ParenthesizedTerm(Assignment(
+                Term::Variable("x", 0),
+                Succ(ParenthesizedTerm(Deref(Term::Variable("x", 0)))))))});
 
-    kData.emplace_back(
-        TestData{"(x := succ (!x)); !x",
-                 Sequence(Assignment(Term::Variable("x", 23),
-                                     Succ(Deref(Term::Variable("x", 23)))),
-                          Deref(Term::Variable("x", 23)))});
+    kData.emplace_back(TestData{
+        "(x := succ (!x)); !x",
+        Sequence(ParenthesizedTerm(Assignment(
+                     Term::Variable("x", 23),
+                     Succ(ParenthesizedTerm(Deref(Term::Variable("x", 23)))))),
+                 Deref(Term::Variable("x", 23)))});
 
     kData.emplace_back(TestData{
         "(x := succ (!x)); (x := succ (!x)); !x",
-        Sequence(Assignment(Term::Variable("x", 23),
-                            Succ(Deref(Term::Variable("x", 23)))),
-                 Sequence(Assignment(Term::Variable("x", 23),
-                                     Succ(Deref(Term::Variable("x", 23)))),
+        Sequence(ParenthesizedTerm(Assignment(
+                     Term::Variable("x", 23),
+                     Succ(ParenthesizedTerm(Deref(Term::Variable("x", 23)))))),
+                 Sequence(ParenthesizedTerm(
+                              Assignment(Term::Variable("x", 23),
+                                         Succ(ParenthesizedTerm(
+                                             Deref(Term::Variable("x", 23)))))),
                           Deref(Term::Variable("x", 23))))});
 
+    kData.emplace_back(TestData{
+        "let x = ref 0 in (x := succ (!x)); !x",
+        Let("x", Ref(Term::Zero()),
+            Sequence(
+                ParenthesizedTerm(Assignment(
+                    Term::Variable("x", 0),
+                    Succ(ParenthesizedTerm(Deref(Term::Variable("x", 0)))))),
+                Deref(Term::Variable("x", 0))))});
+
+    auto record6 = Term::Record();
+    record6.AddRecordLabel("g");
+    record6.Combine(ParenthesizedTerm(
+        Lambda("y", Type::Unit(), Deref(Term::Variable("x", 1)))));
+    record6.AddRecordLabel("i");
+    record6.Combine(ParenthesizedTerm(
+        Lambda("y", Type::Unit(),
+               ParenthesizedTerm(Assignment(
+                   Term::Variable("x", 1),
+                   Succ(ParenthesizedTerm(Deref(Term::Variable("x", 1)))))))));
     kData.emplace_back(
-        TestData{"let x = ref 0 in (x := succ (!x)); !x",
-                 Let("x", Ref(Term::Zero()),
-                     Sequence(Assignment(Term::Variable("x", 0),
-                                         Succ(Deref(Term::Variable("x", 0)))),
-                              Deref(Term::Variable("x", 0))))});
+        TestData{"let x = ref succ 0 in {g = (l y:Unit. !x), i = (l y:Unit. (x "
+                 ":= succ(!x)))}",
+                 Let("x", Ref(Succ(Term::Zero())), std::move(record6))});
 
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
@@ -2002,7 +2113,7 @@ void InitData() {
 
     kData.emplace_back(TestData{
         "(l x:Bool. x) if false then true else l x:Bool. x",
-        {"({l x : Bool. x}) <- (if (false) then (true) else ({l x : Bool. x}))",
+        {"({l x : Bool. x}) <- if false then true else {l x : Bool. x}",
          Type::IllTyped()}});
 
     kData.emplace_back(TestData{"(l x:Bool. if x then true else false) true",
@@ -2115,7 +2226,7 @@ void InitData() {
         "let x = ref 0 in ((l y:Unit. !x) (x := succ 0))", {"1", Type::Nat()}});
 
     kData.emplace_back(TestData{
-        "!((l x:Nat. ref l y:Unit. x) succ succ 0) unit", {"2", Type::Nat()}});
+        "(!(l x:Nat. ref l y:Unit. x) succ succ 0) unit", {"2", Type::Nat()}});
 
     kData.emplace_back(
         TestData{"(!ref {x=succ 0, y=unit}).x", {"1", Type::Nat()}});
