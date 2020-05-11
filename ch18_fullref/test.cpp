@@ -2254,6 +2254,16 @@ void InitData() {
     kData.emplace_back(
         TestData{"let x = ref 0 in ((x := succ (!x)); (x := succ (!x)); !x)",
                  {"2", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"((let x = ref 0 in {get = l y:Unit. !x, inc = l y:Unit. (x "
+                 ":= succ(!x)); !x}).inc) unit",
+                 {"1", Type::Nat()}});
+
+    kData.emplace_back(
+        TestData{"((let x = ref 0 in {get = l y:Unit. !x, inc = l y:Unit. (x "
+                 ":= succ(!x)); !x}).get) unit",
+                 {"0", Type::Nat()}});
 }
 
 void Run() {

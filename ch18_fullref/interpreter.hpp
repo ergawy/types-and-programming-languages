@@ -1105,6 +1105,10 @@ class Term {
                 walk(binding_context_size, *term.sequence_rhs_);
             } else if (term.IsParenthesized()) {
                 walk(binding_context_size, *term.parenthesized_term_);
+            } else if (term.IsRecord()) {
+                for (int i = 0; i < term.record_terms_.size(); ++i) {
+                    walk(binding_context_size, *term.record_terms_[i]);
+                }
             }
         };
 
