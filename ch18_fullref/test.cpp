@@ -1481,7 +1481,7 @@ void Run() {
         Term res;
 
         try {
-            res = parser.ParseProgram();
+            res = parser.ParseStatement();
 
             if (*test.expected_ast_ != res) {
                 std::cout << color::kRed << "Test failed:" << color::kReset
@@ -1984,9 +1984,10 @@ void Run() {
     for (const auto &test : kData) {
         try {
             Parser parser{std::istringstream{test.input_program_}};
-            Term program = parser.ParseProgram();
+            Term program = parser.ParseStatement();
             TypeChecker type_checker;
-            Type &res = type_checker.TypeOf(program);
+            Type &res =
+                type_checker.TypeOf(runtime::NamedStatementStore(), program);
 
             if (test.expected_type_ != res) {
                 std::cout << color::kRed << "Test failed:" << color::kReset
@@ -2279,7 +2280,7 @@ void Run() {
         try {
             Term program =
                 parser::Parser{std::istringstream{test.input_program_}}
-                    .ParseProgram();
+                    .ParseStatement();
             auto actual_eval_res = interpreter.Interpret(program);
 
             if (actual_eval_res.first != test.expected_eval_result_.first ||
