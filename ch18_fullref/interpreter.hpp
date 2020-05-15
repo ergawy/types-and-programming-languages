@@ -7,6 +7,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -219,13 +220,8 @@ class Lexer {
     }
 
     bool IsIdentifierName(std::string token_text) {
-        for (auto c : token_text) {
-            if (!std::isalpha(c) && c != '_') {
-                return false;
-            }
-        }
-
-        return !token_text.empty();
+        static const std::regex id_regex("[_[:alpha:]][_[:alnum:]]*");
+        return std::regex_match(token_text, id_regex);
     }
 
    private:
@@ -297,6 +293,7 @@ std::ostream &operator<<(std::ostream &out, Token token) {
 
 namespace parser {
 
+// TODO Add support for type alising.
 class Type {
     friend std::ostream &operator<<(std::ostream &, const Type &);
 
@@ -833,7 +830,7 @@ class Term {
         } else if (IsProjection()) {
             return !projection_term_;
         } else if (IsLet()) {
-            return let_binding_name_.empty() || !let_body_term_ ||
+            return let_binding_name_.empty() || !let_bound_term_ ||
                    !let_body_term_;
         } else if (IsRef()) {
             return !ref_term_;
@@ -1435,9 +1432,11 @@ class Term {
             return Term::False();
         } else if (IsConstantZero()) {
             return Term::Zero();
+        } else if (IsUnit()) {
+            return Term::Unit();
         } else if (IsSucc()) {
             return std::move(Term::Succ().Combine(unary_op_arg_->Clone()));
-        } else if (IsSucc()) {
+        } else if (IsPred()) {
             return std::move(Term::Pred().Combine(unary_op_arg_->Clone()));
         } else if (IsIsZero()) {
             return std::move(Term::IsZero().Combine(unary_op_arg_->Clone()));
@@ -1459,6 +1458,22 @@ class Term {
         } else if (IsParenthesized()) {
             return std::move(Term::ParenthesizedTerm().Combine(
                 parenthesized_term_->Clone()));
+        } else if (IsAssignment()) {
+            return std::move(Term::Assignment(std::make_unique<Term>(
+                                                  assignment_lhs_->Clone()))
+                                 .Combine(assignment_rhs_->Clone()));
+        } else if (IsSequence()) {
+            return std::move(
+                Term::Sequence(std::make_unique<Term>(sequence_lhs_->Clone()))
+                    .Combine(sequence_rhs_->Clone()));
+        } else if (IsProjection()) {
+            return std::move(Term::Projection(
+                std::make_unique<Term>(projection_term_->Clone()),
+                projection_label_));
+        } else if (IsLet()) {
+            return std::move(Term::Let(let_binding_name_)
+                                 .Combine(let_bound_term_->Clone())
+                                 .Combine(let_body_term_->Clone()));
         }
 
         std::ostringstream error_ss;
@@ -1693,22 +1708,11 @@ class Parser {
                                                   bound_variable_it);
                             } else {
                                 // The naming context for free variables (ref:
-                                // tapl,§6.1.2) is chosen to be the ASCII code
-                                // of a variable's name.
-                                //
-                                // NOTE: Only single-character variable names
-                                // are currecntly supported as free variables.
-                                if (next_token.GetText().length() != 1) {
-                                    std::ostringstream error_ss;
-                                    error_ss << "Unexpected token: "
-                                             << next_token;
-                                    throw std::invalid_argument(error_ss.str());
-                                }
-
+                                // tapl,§6.1.2) is computed from the ASCII code
+                                // of a identifier's name.
                                 de_bruijn_idx =
-                                    bound_variables.size() +
-                                    (std::tolower(next_token.GetText()[0]) -
-                                     'a');
+                                    ComputeDeBruijnIdx(next_token.GetText(),
+                                                       bound_variables.size());
                             }
 
                             auto peeked_token = lexer_.NextToken();
@@ -2233,6 +2237,23 @@ class Parser {
     }
 
    private:
+    int ComputeDeBruijnIdx(std::string id_name, int offset) {
+        int idx = offset;
+
+        for (char c : id_name) {
+            if (std::isalpha(c)) {
+                idx += (std::tolower(c) - 'a');
+            } else if (std::isdigit(c)) {
+                idx += (std::tolower(c) - '0' + 26);
+            } else if (c == '_') {
+                idx += 36;
+            }
+        }
+
+        return idx;
+    }
+
+   private:
     lexer::Lexer lexer_;
 };  // namespace parser
 }  // namespace parser
@@ -2454,8 +2475,8 @@ class NamedStatementStore {
 
    public:
     void AddNamedTerm(const std::string &name, Term term, Type &type) {
-        names_to_terms_map_.emplace(name, std::move(term));
-        names_to_types_map_.emplace(name, &type);
+        names_to_terms_map_[name] = std::move(term);
+        names_to_types_map_[name] = &type;
     }
 
     bool ContainsName(const std::string &name) const {

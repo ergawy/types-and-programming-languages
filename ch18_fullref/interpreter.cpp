@@ -20,7 +20,7 @@ void EvaluateProgram(char* input) {
 
 int main(int argc, char* argv[]) {
     if (argc == 1) {
-        constexpr int line_size = 120;
+        constexpr int line_size = 256;
         char line[line_size];
         interpreter::Interpreter interpreter;
 
