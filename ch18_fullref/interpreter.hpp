@@ -58,11 +58,13 @@ struct Token {
         CONSTANT_UNIT,
         KEYWORD_UNIT_TYPE,
 
+        KEYWORD_FIX,
+
         MARKER_END,
         MARKER_INVALID,
     };
 
-    enum class IdentifieySubCategory {
+    enum class IdentitySubCategory {
         VARIABLE,
         RECORD_LABEL,
     };
@@ -100,6 +102,7 @@ const std::string kKeywordRef = "ref";
 const std::string kKeywordRefType = "Ref";
 const std::string kKeywordUnit = "unit";
 const std::string kKeywordUnitType = "Unit";
+const std::string kKeywordFix = "fix";
 }  // namespace
 
 class Lexer {
@@ -160,6 +163,8 @@ class Lexer {
 
                 {kKeywordUnit, Token::Category::CONSTANT_UNIT},
                 {kKeywordUnitType, Token::Category::KEYWORD_UNIT_TYPE},
+
+                {kKeywordFix, Token::Category::KEYWORD_FIX},
             };
 
         auto token_string = token_strings_[current_token_];
@@ -269,6 +274,8 @@ std::ostream &operator<<(std::ostream &out, Token token) {
 
         {Token::Category::CONSTANT_UNIT, "unit"},
         {Token::Category::KEYWORD_UNIT_TYPE, "Unit"},
+
+        {Token::Category::KEYWORD_FIX, kKeywordFix},
 
         {Token::Category::MARKER_END, "<END>"},
         {Token::Category::MARKER_INVALID, "<INVALID>"},
@@ -592,6 +599,7 @@ class Term {
         UNIT,
         SEQUENCE,
         PARENTHESIZED,
+        FIX,
 
         STORE_LOCATION,
     };
@@ -749,6 +757,13 @@ class Term {
         return result;
     }
 
+    static Term FixTerm() {
+        Term result;
+        result.category_ = Category::FIX;
+
+        return result;
+    }
+
     Term() = default;
 
     Term(const Term &) = delete;
@@ -805,6 +820,8 @@ class Term {
         return category_ == Category::PARENTHESIZED;
     }
 
+    bool IsFix() const { return category_ == Category::FIX; }
+
     bool IsInvalid() const {
         if (IsLambda()) {
             return lambda_arg_name_.empty() || !lambda_arg_type_ ||
@@ -842,6 +859,8 @@ class Term {
             return !sequence_lhs_ || !sequence_rhs_;
         } else if (IsParenthesized()) {
             return !parenthesized_term_;
+        } else if (IsFix()) {
+            return !fix_term_;
         }
 
         return true;
@@ -960,6 +979,12 @@ class Term {
         } else if (IsParenthesized()) {
             if (!parenthesized_term_) {
                 parenthesized_term_ = std::make_unique<Term>(std::move(term));
+            } else {
+                ConvertToApplication(std::move(term));
+            }
+        } else if (IsFix()) {
+            if (!fix_term_) {
+                fix_term_ = std::make_unique<Term>(std::move(term));
             } else {
                 ConvertToApplication(std::move(term));
             }
@@ -1107,6 +1132,8 @@ class Term {
                 for (int i = 0; i < term.record_terms_.size(); ++i) {
                     walk(binding_context_size, *term.record_terms_[i]);
                 }
+            } else if (term.IsFix()) {
+                walk(binding_context_size, *term.fix_term_);
             }
         };
 
@@ -1235,6 +1262,8 @@ class Term {
 
     Term &GetParenthesizedTerm() const { return *parenthesized_term_; }
 
+    Term &GetFixTerm() const { return *fix_term_; }
+
     bool operator==(const Term &other) const {
         if (IsLambda() && other.IsLambda()) {
             return LambdaArgType() == other.LambdaArgType() &&
@@ -1319,6 +1348,10 @@ class Term {
 
         if (IsParenthesized() && other.IsParenthesized()) {
             return *parenthesized_term_ == *other.parenthesized_term_;
+        }
+
+        if (IsFix() && other.IsFix()) {
+            return *fix_term_ == *other.fix_term_;
         }
 
         return false;
@@ -1407,6 +1440,9 @@ class Term {
             out << prefix << "(\n";
             out << parenthesized_term_->ASTString(indentation + 2) << "\n";
             out << prefix << ")";
+        } else if (IsFix()) {
+            out << prefix << "fix \n";
+            out << fix_term_->ASTString(indentation + 2) << "\n";
         }
 
         return out.str();
@@ -1474,6 +1510,8 @@ class Term {
             return std::move(Term::Let(let_binding_name_)
                                  .Combine(let_bound_term_->Clone())
                                  .Combine(let_body_term_->Clone()));
+        } else if (IsFix()) {
+            return std::move(Term::FixTerm().Combine(fix_term_->Clone()));
         }
 
         std::ostringstream error_ss;
@@ -1552,6 +1590,8 @@ class Term {
     std::unique_ptr<Term> sequence_rhs_{};
 
     std::unique_ptr<Term> parenthesized_term_{};
+
+    std::unique_ptr<Term> fix_term_{};
 };
 
 std::ostream &operator<<(std::ostream &out, const Term &term) {
@@ -1610,6 +1650,8 @@ std::ostream &operator<<(std::ostream &out, const Term &term) {
         out << "" << *term.sequence_lhs_ << "; " << *term.sequence_rhs_;
     } else if (term.IsParenthesized()) {
         out << "(" << *term.parenthesized_term_ << ")";
+    } else if (term.IsFix()) {
+        out << "fix " << *term.fix_term_;
     } else {
         out << "<ERROR>";
     }
@@ -1688,13 +1730,13 @@ class Parser {
                 case Token::Category::IDENTIFIER: {
                     switch (CalculateIdentifierSubCategoryFromContext(
                         next_token, term_stack)) {
-                        case Token::IdentifieySubCategory::RECORD_LABEL: {
+                        case Token::IdentitySubCategory::RECORD_LABEL: {
                             term_stack.back().AddRecordLabel(
                                 next_token.GetText());
                             break;
                         }
 
-                        case Token::IdentifieySubCategory::VARIABLE: {
+                        case Token::IdentitySubCategory::VARIABLE: {
                             auto bound_variable_it =
                                 std::find(std::rbegin(bound_variables),
                                           std::rend(bound_variables),
@@ -2020,6 +2062,7 @@ class Parser {
 
                     break;
                 }
+
                 case Token::Category::SEMICOLON: {
                     if (term_stack.empty() || term_stack.back().IsInvalid()) {
                         throw std::invalid_argument("Unexpected ';'");
@@ -2027,6 +2070,16 @@ class Parser {
 
                     term_stack.back().ConvertToSequence();
                     term_stack.emplace_back(Term());
+
+                    break;
+                }
+
+                case Token::Category::KEYWORD_FIX: {
+                    if (term_stack.back().IsEmpty()) {
+                        term_stack.back() = Term::FixTerm();
+                    } else {
+                        term_stack.emplace_back(Term::FixTerm());
+                    }
 
                     break;
                 }
@@ -2224,16 +2277,16 @@ class Parser {
         return Type::Record(std::move(fields));
     }
 
-    Token::IdentifieySubCategory CalculateIdentifierSubCategoryFromContext(
+    Token::IdentitySubCategory CalculateIdentifierSubCategoryFromContext(
         Token token, const std::vector<Term> &term_stack) {
         assert(token.GetCategory() == Token::Category::IDENTIFIER);
 
         if (term_stack.back().IsRecord() &&
             term_stack.back().IsRecordExpectingLabel()) {
-            return Token::IdentifieySubCategory::RECORD_LABEL;
+            return Token::IdentitySubCategory::RECORD_LABEL;
         }
 
-        return Token::IdentifieySubCategory::VARIABLE;
+        return Token::IdentitySubCategory::VARIABLE;
     }
 
    private:
@@ -2255,7 +2308,7 @@ class Parser {
 
    private:
     lexer::Lexer lexer_;
-};  // namespace parser
+};
 }  // namespace parser
 
 namespace {

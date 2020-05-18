@@ -70,7 +70,7 @@ std::vector<TestData> kData = {
 
     // Valid tokens (keywords):
     TestData{"true false if else then 0 succ pred iszero Bool Nat let in ref "
-             "Ref unit Unit",
+             "Ref unit Unit fix",
              {
                  Token{Category::CONSTANT_TRUE},
                  Token{Category::CONSTANT_FALSE},
@@ -94,6 +94,8 @@ std::vector<TestData> kData = {
 
                  Token{Category::CONSTANT_UNIT},
                  Token{Category::KEYWORD_UNIT_TYPE},
+
+                 Token{Category::KEYWORD_FIX},
              }},
 
     // Valid tokens (variables):
@@ -214,6 +216,10 @@ Term Pred(Term &&arg) {
     return term;
 }
 
+std::unique_ptr<Term> PredUP(Term &&arg) {
+    return std::make_unique<Term>(Pred(std::move(arg)));
+}
+
 Term IsZero(Term &&arg) {
     auto term = Term::IsZero();
     term.Combine(std::move(arg));
@@ -285,6 +291,17 @@ std::unique_ptr<Term> ParenthesizedTermUP(Term &&term) {
     res.Combine(std::move(term));
 
     return std::make_unique<Term>(std::move(res));
+}
+
+Term Fix(Term &&fix_term) {
+    Term term = Term::FixTerm();
+    term.Combine(std::move(fix_term));
+
+    return term;
+}
+
+std::unique_ptr<Term> FixUP(Term &&fix_term) {
+    return std::make_unique<Term>(Fix(std::move(fix_term)));
 }
 }  // namespace
 
@@ -1424,6 +1441,42 @@ void InitData() {
                  ":= succ(!x)))}",
                  Let("x", Ref(Succ(Term::Zero())), std::move(record6))});
 
+    kData.emplace_back(TestData{"fix x", Fix(Term::Variable("x", 23))});
+
+    kData.emplace_back(TestData{"fix succ 0", Fix(Succ(Term::Zero()))});
+
+    kData.emplace_back(
+        TestData{"fix x y", Term::Application(FixUP(Term::Variable("x", 23)),
+                                              VariableUP("y", 24))});
+
+    kData.emplace_back(TestData{
+        "fix x let y = succ 0 in iszero y",
+        Term::Application(
+            FixUP(Term::Variable("x", 23)),
+            LetUP("y", Succ(Term::Zero()), IsZero(Term::Variable("y", 0))))});
+
+    kData.emplace_back(
+        TestData{"(let y = succ 0 in iszero y) fix x ",
+                 Term::Application(
+                     ParenthesizedTermUP(Let("y", Succ(Term::Zero()),
+                                             IsZero(Term::Variable("y", 0)))),
+                     FixUP(Term::Variable("x", 23)))});
+
+    kData.emplace_back(TestData{
+        "fix l ie: Nat -> Bool. l x:Nat. if iszero x then true else if "
+        "iszero (pred x) then false else (ie (pred (pred x)))",
+        Fix(Lambda(
+            "ie", Type::Function(Type::Nat(), Type::Bool()),
+            Lambda(
+                "x", Type::Nat(),
+                If(IsZero(Term::Variable("x", 0)), Term::True(),
+                   If(IsZero(ParenthesizedTerm(Pred(Term::Variable("x", 0)))),
+                      Term::False(),
+                      ParenthesizedTerm(Term::Application(
+                          VariableUP("ie", 1),
+                          ParenthesizedTermUP(Pred(ParenthesizedTerm(
+                              Pred(Term::Variable("x", 0))))))))))))});
+
     // Invalid programs:
     kData.emplace_back(TestData{"((x y)) (z"});
     kData.emplace_back(TestData{"(l x. x l y:Bool. y a"});
@@ -1467,6 +1520,7 @@ void InitData() {
     kData.emplace_back(TestData{"(x := succ (!x));"});
     kData.emplace_back(TestData{";(x := succ (!x))"});
     kData.emplace_back(TestData{";"});
+    kData.emplace_back(TestData{"fix"});
 }
 
 void Run() {
