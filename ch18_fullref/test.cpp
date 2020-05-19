@@ -1848,6 +1848,11 @@ void InitData() {
     kData.emplace_back(
         TestData{"let x = ref 0 in (x := succ (!x)); (x := succ (!x)); !x",
                  Type::Nat()});
+
+    kData.emplace_back(
+        TestData{"fix l ie: Nat -> Bool. l x:Nat. if iszero x then true else "
+                 "if iszero (pred x) then false else (ie (pred (pred x)))",
+                 Type::Function(Type::Nat(), Type::Bool())});
 }
 
 struct SubtypingTestData {
@@ -2319,6 +2324,12 @@ void InitData() {
         TestData{"((let x = ref 0 in {get = l y:Unit. !x, inc = l y:Unit. (x "
                  ":= succ(!x)); !x}).get) unit",
                  {"0", Type::Nat()}});
+
+    // IsEven
+    kData.emplace_back(TestData{
+        "(fix l ie: Nat -> Bool. l x:Nat. if iszero x then true else if iszero "
+        "(pred x) then false else (ie (pred (pred x)))) succ succ succ succ 0",
+        {"true", Type::Bool()}});
 }
 
 void Run() {

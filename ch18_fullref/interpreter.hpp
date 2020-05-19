@@ -1512,6 +1512,11 @@ class Term {
                                  .Combine(let_body_term_->Clone()));
         } else if (IsFix()) {
             return std::move(Term::FixTerm().Combine(fix_term_->Clone()));
+        } else if (IsIf()) {
+            return std::move(Term::If()
+                                 .Combine(if_condition_->Clone())
+                                 .Combine(if_then_->Clone())
+                                 .Combine(if_else_->Clone()));
         }
 
         std::ostringstream error_ss;
@@ -2852,6 +2857,14 @@ class TypeChecker {
         } else if (term.IsParenthesized()) {
             res = &TypeOf(named_statement_store, ctx,
                           term.GetParenthesizedTerm());
+        } else if (term.IsFix()) {
+            Type &fix_term_type =
+                TypeOf(named_statement_store, ctx, term.GetFixTerm());
+
+            if (fix_term_type.IsFunction() &&
+                fix_term_type.FunctionLHS() == fix_term_type.FunctionRHS()) {
+                res = &fix_term_type.FunctionLHS();
+            }
         }
 
         return *res;
@@ -3036,6 +3049,12 @@ class Interpreter {
             Eval1(term.SequenceLHS());
         } else if (term.IsParenthesized()) {
             std::swap(term, term.GetParenthesizedTerm());
+        } else if (term.IsFix() && term.GetFixTerm().IsLambda()) {
+            // Term clone = term.Clone();
+            term_subst_top(term, term.GetFixTerm().LambdaBody());
+            std::swap(term, term.GetFixTerm().LambdaBody());
+        } else if (term.IsFix()) {
+            Eval1(term.GetFixTerm());
         } else if (term.IsVariable() &&
                    named_statement_store_.ContainsName(term.VariableName())) {
             Term temp = named_statement_store_.GetStatement(term.VariableName())
