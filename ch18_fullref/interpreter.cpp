@@ -1,6 +1,7 @@
 #include "interpreter.hpp"
 
 #include <array>
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -20,17 +21,21 @@ void EvaluateProgram(char* input) {
 
 int main(int argc, char* argv[]) {
     if (argc == 1) {
-        constexpr int line_size = 256;
+        constexpr int line_size = 512;
         char line[line_size];
         interpreter::Interpreter interpreter;
 
         while (true) {
-            std::cout << ">> ";
-            std::cin.getline(&line[0], line_size);
-            parser::Parser statement_parser(std::istringstream{line});
-            auto statement_ast = statement_parser.ParseStatement();
-            auto res = interpreter.Interpret(statement_ast);
-            std::cout << "=> " << res.first << ": " << res.second << "\n";
+            try {
+                std::cout << ">> ";
+                std::cin.getline(&line[0], line_size);
+                parser::Parser statement_parser(std::istringstream{line});
+                auto statement_ast = statement_parser.ParseStatement();
+                auto res = interpreter.Interpret(statement_ast);
+                std::cout << "=> " << res.first << ": " << res.second << "\n";
+            } catch (const std::exception& ex) {
+                std::cerr << "Error: " << ex.what() << "\n";
+            }
         }
     } else if (argc == 2) {
         EvaluateProgram(argv[1]);

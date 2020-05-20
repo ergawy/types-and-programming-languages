@@ -300,7 +300,7 @@ std::ostream &operator<<(std::ostream &out, Token token) {
 
 namespace parser {
 
-// TODO Add support for type alising.
+// TODO Add support for creating named (and anonymouse) record types.
 class Type {
     friend std::ostream &operator<<(std::ostream &, const Type &);
 

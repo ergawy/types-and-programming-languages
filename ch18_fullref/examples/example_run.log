@@ -1,0 +1,129 @@
+// An example run of fix that logs the intermediate evaluation steps.
+
+>> (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}}) <- succ succ succ succ 0: Bool
+
+Eval: (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}}) <- succ succ succ succ 0
+
+Eval: (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}})
+
+Eval: fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- succ succ succ succ 0
+
+Eval: fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}}
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- succ succ succ succ 0
+
+Eval: if iszero succ succ succ succ 0 then true else if iszero (pred succ succ succ succ 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ
+succ 0)))
+
+Eval: iszero succ succ succ succ 0
+
+Eval: if false then true else if iszero (pred succ succ succ succ 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0)))
+
+Eval: if iszero (pred succ succ succ succ 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0)))
+
+Eval: iszero (pred succ succ succ succ 0)
+
+Eval: (pred succ succ succ succ 0)
+
+Eval: if iszero pred succ succ succ succ 0 then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0)))
+
+Eval: iszero pred succ succ succ succ 0
+
+Eval: pred succ succ succ succ 0
+
+Eval: if iszero succ succ succ 0 then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0)))
+
+Eval: iszero succ succ succ 0
+
+Eval: if false then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0)))
+
+Eval: (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0)))
+
+Eval: fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ succ succ 0))
+
+Eval: fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}}
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- (pred (pred succ succ succ succ 0)
+)
+
+Eval: (pred (pred succ succ succ succ 0))
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- pred (pred succ succ succ succ 0)
+
+Eval: pred (pred succ succ succ succ 0)
+
+Eval: (pred succ succ succ succ 0)
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- pred pred succ succ succ succ 0
+
+Eval: pred pred succ succ succ succ 0
+
+Eval: pred succ succ succ succ 0
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- pred succ succ succ 0
+
+Eval: pred succ succ succ 0
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- succ succ 0
+
+Eval: if iszero succ succ 0 then true else if iszero (pred succ succ 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: iszero succ succ 0
+
+Eval: if false then true else if iszero (pred succ succ 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: if iszero (pred succ succ 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: iszero (pred succ succ 0)
+
+Eval: (pred succ succ 0)
+
+Eval: if iszero pred succ succ 0 then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: iszero pred succ succ 0
+
+Eval: pred succ succ 0
+
+Eval: if iszero succ 0 then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: iszero succ 0
+
+Eval: if false then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0)))
+
+Eval: fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred succ succ 0))
+
+Eval: fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}}
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- (pred (pred succ succ 0))
+
+Eval: (pred (pred succ succ 0))
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- pred (pred succ succ 0)
+
+Eval: pred (pred succ succ 0)
+
+Eval: (pred succ succ 0)
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- pred pred succ succ 0
+
+Eval: pred pred succ succ 0
+
+Eval: pred succ succ 0
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- pred succ 0
+
+Eval: pred succ 0
+
+Eval: {l x : Nat. if iszero x then true else if iszero (pred x) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred x)))} <- 0
+
+Eval: if iszero 0 then true else if iszero (pred 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred 0)))
+
+Eval: iszero 0
+
+Eval: if true then true else if iszero (pred 0) then false else (fix {l ie : (Nat -> Bool). {l x : Nat. if iszero x then true else if iszero (pred x) then false else (ie <- (pred (pred x)))}} <- (pred (pred 0)))
+
+Eval: true
+
+=> true: Bool
