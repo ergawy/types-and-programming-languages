@@ -12,6 +12,6 @@ sc = newSetCounter unit
 
 instrCounterClass = l r:{x:Ref Nat,a:Ref Nat}. l self:Unit->{get:Unit->Nat,set:Nat->Unit,inc:Unit->Unit,accesses:Unit->Nat}. l _:Unit. let super = setCounterClass r self unit in {get=super.get, set=l i:Nat. ((r.a:=succ(!(r.a))); (super.set i)), inc=super.inc, accesses=l _:Unit. !(r.a)}
 
-newInstrCounterClass = l _:Unit. let r = {x=ref succ 0, a= ref 0} in (fix (instrCounterClass r)) unit
+newInstrCounter = l _:Unit. let r = {x=ref succ 0, a= ref 0} in (fix (instrCounterClass r)) unit
 
-ic = newInstrCounterClass unit
+ic = newInstrCounter unit

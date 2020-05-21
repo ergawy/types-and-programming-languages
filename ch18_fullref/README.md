@@ -53,6 +53,8 @@ T ::=
     {l_i:T_i} for i in 1..n
     T -> T
     Ref T
+    Source T
+    Sink T
 ```
 
 ### Contexts

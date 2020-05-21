@@ -54,6 +54,8 @@ struct Token {
 
         KEYWORD_REF,
         KEYWORD_REF_TYPE,
+        KEYWORD_SOURCE_TYPE,
+        KEYWORD_SINK_TYPE,
 
         CONSTANT_UNIT,
         KEYWORD_UNIT_TYPE,
@@ -100,6 +102,8 @@ const std::string kKeywordLet = "let";
 const std::string kKeywordIn = "in";
 const std::string kKeywordRef = "ref";
 const std::string kKeywordRefType = "Ref";
+const std::string kKeywordSourceType = "Source";
+const std::string kKeywordSinkType = "Sink";
 const std::string kKeywordUnit = "unit";
 const std::string kKeywordUnitType = "Unit";
 const std::string kKeywordFix = "fix";
@@ -160,6 +164,8 @@ class Lexer {
 
                 {kKeywordRef, Token::Category::KEYWORD_REF},
                 {kKeywordRefType, Token::Category::KEYWORD_REF_TYPE},
+                {kKeywordSourceType, Token::Category::KEYWORD_SOURCE_TYPE},
+                {kKeywordSinkType, Token::Category::KEYWORD_SINK_TYPE},
 
                 {kKeywordUnit, Token::Category::CONSTANT_UNIT},
                 {kKeywordUnitType, Token::Category::KEYWORD_UNIT_TYPE},
@@ -271,6 +277,8 @@ std::ostream &operator<<(std::ostream &out, Token token) {
 
         {Token::Category::KEYWORD_REF, "ref"},
         {Token::Category::KEYWORD_REF_TYPE, "Ref"},
+        {Token::Category::KEYWORD_SOURCE_TYPE, kKeywordSourceType},
+        {Token::Category::KEYWORD_SINK_TYPE, kKeywordSinkType},
 
         {Token::Category::CONSTANT_UNIT, "unit"},
         {Token::Category::KEYWORD_UNIT_TYPE, "Unit"},
@@ -301,8 +309,15 @@ std::ostream &operator<<(std::ostream &out, Token token) {
 namespace parser {
 
 // TODO Add support for creating named (and anonymouse) record types.
+// Might be helpful to check "ascriptions" (see tapl sec. 11.4).
 class Type {
     friend std::ostream &operator<<(std::ostream &, const Type &);
+
+    enum class ReferenceCategory {
+        REF,
+        SOURCE,
+        SINK,
+    };
 
    public:
     static Type &Top() {
@@ -375,18 +390,33 @@ class Type {
     }
 
     static Type &Ref(Type &ref_type) {
+        return Ref(ref_type, ReferenceCategory::REF);
+    }
+
+    static Type &Source(Type &ref_type) {
+        return Ref(ref_type, ReferenceCategory::SOURCE);
+    }
+
+    static Type &Sink(Type &ref_type) {
+        return Ref(ref_type, ReferenceCategory::SINK);
+    }
+
+    static Type &Ref(Type &ref_type, ReferenceCategory ref_category) {
         static std::vector<std::unique_ptr<Type>> type_pool;
 
-        auto result = std::find_if(std::begin(type_pool), std::end(type_pool),
-                                   [&](const std::unique_ptr<Type> &type) {
-                                       return type->ref_type_ == &ref_type;
-                                   });
+        auto result =
+            std::find_if(std::begin(type_pool), std::end(type_pool),
+                         [&](const std::unique_ptr<Type> &type) {
+                             return type->ref_type_ == &ref_type &&
+                                    type->ref_category_ == ref_category;
+                         });
 
         if (result != std::end(type_pool)) {
             return **result;
         }
 
-        type_pool.emplace_back(std::unique_ptr<Type>(new Type(&ref_type)));
+        type_pool.emplace_back(
+            std::unique_ptr<Type>(new Type(&ref_type, ref_category)));
 
         return *type_pool.back();
     }
@@ -443,7 +473,20 @@ class Type {
 
     bool IsRecord() const { return category_ == TypeCategory::RECORD; }
 
-    bool IsRef() const { return category_ == TypeCategory::REF; }
+    bool IsRef() const {
+        return category_ == TypeCategory::REF &&
+               ref_category_ == ReferenceCategory::REF;
+    }
+
+    bool IsSource() const {
+        return category_ == TypeCategory::REF &&
+               ref_category_ == ReferenceCategory::SOURCE;
+    }
+
+    bool IsSink() const {
+        return category_ == TypeCategory::REF &&
+               ref_category_ == ReferenceCategory::SINK;
+    }
 
     Type &FunctionLHS() const {
         if (!IsFunction()) {
@@ -470,8 +513,8 @@ class Type {
     }
 
     Type &RefType() const {
-        if (!IsRef()) {
-            throw std::invalid_argument("Expected Ref type.");
+        if (!IsRef() && !IsSource() && !IsSink()) {
+            throw std::invalid_argument("Expected Ref/Source/Sink type.");
         }
 
         return *ref_type_;
@@ -524,7 +567,10 @@ class Type {
     Type(RecordFields fields)
         : record_fields_(std::move(fields)), category_(TypeCategory::RECORD) {}
 
-    Type(Type *ref_type) : ref_type_(ref_type), category_(TypeCategory::REF) {}
+    Type(Type *ref_type, ReferenceCategory ref_category)
+        : ref_type_(ref_type),
+          category_(TypeCategory::REF),
+          ref_category_(ref_category) {}
 
     TypeCategory category_ = TypeCategory::ILL;
 
@@ -536,6 +582,7 @@ class Type {
     RecordFields record_fields_{};
 
     Type *ref_type_ = nullptr;
+    ReferenceCategory ref_category_;
 };
 
 std::ostream &operator<<(std::ostream &out, const Type &type) {
@@ -567,6 +614,10 @@ std::ostream &operator<<(std::ostream &out, const Type &type) {
         out << "}";
     } else if (type.IsRef()) {
         out << "Ref " << *type.ref_type_;
+    } else if (type.IsSource()) {
+        out << "Source " << *type.ref_type_;
+    } else if (type.IsSink()) {
+        out << "Sink " << *type.ref_type_;
     } else {
         out << "Ⱦ";
     }
@@ -2197,6 +2248,12 @@ class Parser {
             } else if (token.GetCategory() ==
                        Token::Category::KEYWORD_REF_TYPE) {
                 parts.emplace_back(&Type::Ref(ParseType()));
+            } else if (token.GetCategory() ==
+                       Token::Category::KEYWORD_SOURCE_TYPE) {
+                parts.emplace_back(&Type::Source(ParseType()));
+            } else if (token.GetCategory() ==
+                       Token::Category::KEYWORD_SINK_TYPE) {
+                parts.emplace_back(&Type::Sink(ParseType()));
             } else {
                 std::ostringstream error_ss;
                 error_ss << __LINE__ << ": Unexpected token: " << token;
@@ -2605,6 +2662,30 @@ class TypeChecker {
                    IsSubtype(s.FunctionRHS(), t.FunctionRHS());
         }
 
+        // A Source eference refers to a read-only cell. It's therefore safe to
+        // use Source S whenever a Source T is expected if and only if S <: T.
+        // So, whatever field of T we need to access will be also available in
+        // S.
+        if (s.IsSource() && t.IsSource()) {
+            return IsSubtype(s.RefType(), t.RefType());
+        }
+
+        // A Sink reference refers to a write-only cell. It's therefore safe to
+        // use Sink S whenever Sink T is expected if and only if T <: S. Writing
+        // a value of type T to a cell expecting a value of type S is fine since
+        // T will provide all the fields needed to set the S cell.
+        if (s.IsSink() && t.IsSink()) {
+            return IsSubtype(t.RefType(), s.RefType());
+        }
+
+        if (s.IsRef() && t.IsSource()) {
+            return s.RefType() == t.RefType();
+        }
+
+        if (s.IsRef() && t.IsSink()) {
+            return s.RefType() == t.RefType();
+        }
+
         return false;
     }
 
@@ -2833,7 +2914,7 @@ class TypeChecker {
             Type &deref_term_type =
                 TypeOf(named_statement_store, ctx, term.DerefTerm());
 
-            if (deref_term_type.IsRef()) {
+            if (deref_term_type.IsRef() || deref_term_type.IsSource()) {
                 res = &deref_term_type.RefType();
             }
         } else if (term.IsAssignment()) {
@@ -2842,7 +2923,8 @@ class TypeChecker {
             Type &rhs_type =
                 TypeOf(named_statement_store, ctx, term.AssignmentRHS());
 
-            if (lhs_type.IsRef() && lhs_type.RefType() == rhs_type) {
+            if ((lhs_type.IsRef() || lhs_type.IsSink()) &&
+                lhs_type.RefType() == rhs_type) {
                 res = &Type::Unit();
             }
         } else if (term.IsSequence()) {
@@ -2877,7 +2959,7 @@ class TypeChecker {
 
         return new_ctx;
     }
-};
+};  // namespace type_checker
 }  // namespace type_checker
 
 namespace interpreter {
@@ -3050,7 +3132,6 @@ class Interpreter {
         } else if (term.IsParenthesized()) {
             std::swap(term, term.GetParenthesizedTerm());
         } else if (term.IsFix() && term.GetFixTerm().IsLambda()) {
-            // Term clone = term.Clone();
             term_subst_top(term, term.GetFixTerm().LambdaBody());
             std::swap(term, term.GetFixTerm().LambdaBody());
         } else if (term.IsFix()) {
